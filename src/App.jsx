@@ -158,48 +158,45 @@ export default function PhyllisOps() {
 
   const showFlash = (msg) => { setFlash(msg); setTimeout(()=>setFlash(""),2200); };
 
+  const ls = {
+    get: (key) => { try { const v=localStorage.getItem(key); return v?JSON.parse(v):null; } catch(e){return null;} },
+    set: (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e){} },
+  };
+
   // ─── Load persistent data ───
   useEffect(()=>{
-    (async()=>{
-      try {
-        const [c,r]=await Promise.all([
-          window.storage.get("phyllis-costs"),
-          window.storage.get("phyllis-recipes"),
-        ]);
-        if(c) setIngredientCosts(JSON.parse(c.value));
-        if(r) setRecipes(JSON.parse(r.value));
-      } catch(e){}
-      setLoading(false);
-    })();
+    try {
+      const c=ls.get("phyllis-costs");
+      const r=ls.get("phyllis-recipes");
+      if(c) setIngredientCosts(c);
+      if(r) setRecipes(r);
+    } catch(e){}
+    setLoading(false);
   },[]);
 
   // ─── Load daily data ───
   useEffect(()=>{
-    (async()=>{
-      try {
-        const [p,s]=await Promise.all([
-          window.storage.get(`phyllis-par:${selectedDate}`),
-          window.storage.get(`phyllis-sales:${selectedDate}`),
-        ]);
-        if(p){const d=JSON.parse(p.value);setParEntries(d.entries||{});setParStaff(d.staff||"");}
-        else{setParEntries({});setParStaff("");}
-        if(s) setSalesEntries(JSON.parse(s.value));
-        else setSalesEntries({});
-      } catch(e){}
-    })();
+    try {
+      const p=ls.get(`phyllis-par:${selectedDate}`);
+      const s=ls.get(`phyllis-sales:${selectedDate}`);
+      if(p){setParEntries(p.entries||{});setParStaff(p.staff||"");}
+      else{setParEntries({});setParStaff("");}
+      if(s) setSalesEntries(s);
+      else setSalesEntries({});
+    } catch(e){}
   },[selectedDate]);
 
-  const saveCosts = async (c) => {
-    try{await window.storage.set("phyllis-costs",JSON.stringify(c));setIngredientCosts(c);showFlash("Costs saved ✓");}catch(e){}
+  const saveCosts = (c) => {
+    ls.set("phyllis-costs",c); setIngredientCosts(c); showFlash("Costs saved ✓");
   };
-  const saveRecipes = async (r) => {
-    try{await window.storage.set("phyllis-recipes",JSON.stringify(r));setRecipes(r);showFlash("Recipe saved ✓");}catch(e){}
+  const saveRecipes = (r) => {
+    ls.set("phyllis-recipes",r); setRecipes(r); showFlash("Recipe saved ✓");
   };
-  const savePAR = async () => {
-    try{await window.storage.set(`phyllis-par:${selectedDate}`,JSON.stringify({staff:parStaff,entries:parEntries}));showFlash("PAR saved ✓");}catch(e){}
+  const savePAR = () => {
+    ls.set(`phyllis-par:${selectedDate}`,{staff:parStaff,entries:parEntries}); showFlash("PAR saved ✓");
   };
-  const saveSales = async () => {
-    try{await window.storage.set(`phyllis-sales:${selectedDate}`,JSON.stringify(salesEntries));showFlash("Sales saved ✓");}catch(e){}
+  const saveSales = () => {
+    ls.set(`phyllis-sales:${selectedDate}`,salesEntries); showFlash("Sales saved ✓");
   };
 
   const doLogin = () => {
