@@ -168,18 +168,14 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 Set recommended:true for best value. Use 0 if price truly unknown.`;
 
-        const res=await fetch("https://api.anthropic.com/v1/messages",{
+        const res=await fetch("/api/price-check",{
           method:"POST",
           headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({
-            model:"claude-sonnet-4-20250514",
-            max_tokens:800,
-            messages:[{role:"user",content:prompt}]
-          })
+          body:JSON.stringify({ingredient:ing.name,unit:ing.unit,yourCost:yourCost})
         });
         const json=await res.json();
-        const txt=json.content?.find(b=>b.type==="text")?.text||"";
-        setData(JSON.parse(txt.replace(/```json|```/g,"").trim()));
+        if(json.error) throw new Error(json.error);
+        setData(json);
       } catch(e){ setErr("Could not fetch prices. Check internet connection."); }
       setLoading(false);
     })();
