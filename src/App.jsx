@@ -798,7 +798,7 @@ export default function PhyllisOps() {
                   {editEmpId?"Update Employee":"Save Employee"}
                 </button>
                 {editEmpId&&(
-                  <button onClick={()=>{setEditEmpId(null);setEmpForm({firstName:"",lastName:"",designation:DESIGNATIONS[0],rate:"",pin:""}};}}
+                  <button onClick={()=>{setEditEmpId(null);setEmpForm({firstName:"",lastName:"",designation:DESIGNATIONS[0],rate:"",pin:""})}}
                     style={{...S.btnDanger,padding:"8px 16px"}}>Cancel</button>
                 )}
               </div>
