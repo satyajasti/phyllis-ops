@@ -30,7 +30,6 @@ const FIELD_MAPS = {
     Designation: d.designation || "",
     Salary: d.hourly_rate || d.Salary || 0,
     pin: d.pin || "",
-    Is_Active: d.is_active ? "true" : "false",
   }),
   Recipes: (d) => ({
     Recipe_Name: d.recipe_name || d.name || "",
