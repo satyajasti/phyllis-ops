@@ -178,9 +178,9 @@ export default function PhyllisOps(){
     (async()=>{
       try{
         const [emps,recs,rIngs,ingCosts]=await Promise.all([
-          zoho("getAll","Employees_Report"),
-          zoho("getAll","Recipes_Report"),
-          zoho("getAll","Recipe_Ingredients_Report"),
+          zoho("getAll","Employees"),
+          zoho("getAll","Recipes"),
+          zoho("getAll","Recipe_Ingredients"),
           zoho("getAll","Ingredients_Report"),
         ]);
         setEmps(emps||[]);
@@ -202,9 +202,9 @@ export default function PhyllisOps(){
       try{
         const fmtDate=date; // YYYY-MM-DD
         const [pars,sales,labor]=await Promise.all([
-          zoho("getAll","PAR_Entries_Report",{criteria:`entry_date=="${fmtDate}"`}),
-          zoho("getAll","Sales_Entries_Report",{criteria:`sale_date=="${fmtDate}"`}),
-          zoho("getAll","Labor_Entries_Report",{criteria:`work_date=="${fmtDate}"`}),
+          zoho("getAll","PAR_Entries",{criteria:`entry_date=="${fmtDate}"`}),
+          zoho("getAll","Sales_Entries",{criteria:`sale_date=="${fmtDate}"`}),
+          zoho("getAll","Labor_Entries",{criteria:`work_date=="${fmtDate}"`}),
         ]);
         // Build PAR map
         const pm={};
@@ -376,7 +376,7 @@ export default function PhyllisOps(){
     setCosts(p=>({...p,[ingId]:value}));
     // Update Ingredients form in Zoho
     try{
-      const existing=await zoho("getAll","Ingredients_Report",{criteria:`ingredient_id=="${ingId}"`});
+      const existing=await zoho("getAll","Ingredients",{criteria:`ingredient_id=="${ingId}"`});
       if(existing&&existing.length>0){
         await zoho("update","Ingredients_Report",{data:{cost_per_unit:value},recordId:existing[0].ID});
       } else {
