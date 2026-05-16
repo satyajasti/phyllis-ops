@@ -1,6 +1,16 @@
 // /api/zoho.js
 import { getZohoToken, ZOHO_BASE } from "./zoho-token.js";
 
+// ── Date formatter: YYYY-MM-DD → dd-MMM-yyyy ──
+function toZohoDate(d) {
+  if (!d) return "";
+  const months = ["Jan","Feb","Mar","Apr","May","Jun",
+                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+  const parts = d.split("-");
+  if (parts.length !== 3) return d;
+  return `${parts[2]}-${months[parseInt(parts[1])-1]}-${parts[0]}`;
+}
+
 // ── Exact Zoho Creator report names ──
 const REPORTS = {
   Employees:          "All_Employees",
@@ -53,13 +63,13 @@ const FIELD_MAPS = {
   PAR_Entries: (d) => ({
     Ingredient_Name: d.ingredient_name || "",
     Ingredient_ID: d.ingredient_id || "",
-    Entry_Date: d.entry_date || "",
+    Entry_Date: toZohoDate(d.entry_date || ""),
     On_Hand: d.on_hand || 0,
     Order_Quantity: d.order_qty || 0,
     Completed_By: d.completed_by || "",
   }),
   Sales_Entries: (d) => ({
-    Sale_Date: d.sale_date || "",
+    Sale_Date: toZohoDate(d.sale_date || ""),
     Recipe_Name: d.recipe_name || "",
     Recipe_ID: d.recipe_id || "",
     Quantity_Sold: d.qty_sold || 0,
@@ -67,7 +77,7 @@ const FIELD_MAPS = {
     Entered_By: d.entered_by || "",
   }),
   Labor_Entries: (d) => ({
-    Work_Date: d.work_date || "",
+    Work_Date: toZohoDate(d.work_date || ""),
     Employee_Name: d.employee_name || "",
     Employee_ID: d.employee_id || "",
     Designation: d.designation || "",

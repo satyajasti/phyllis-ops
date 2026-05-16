@@ -200,11 +200,13 @@ export default function PhyllisOps(){
     if(!date) return;
     (async()=>{
       try{
-        const fmtDate=date; // YYYY-MM-DD
+        const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        const dp=date.split("-");
+        const zohoDate=`${dp[2]}-${months[parseInt(dp[1])-1]}-${dp[0]}`;
         const [pars,sales,labor]=await Promise.all([
-          zoho("getAll","PAR_Entries",{criteria:`entry_date=="${fmtDate}"`}),
-          zoho("getAll","Sales_Entries",{criteria:`sale_date=="${fmtDate}"`}),
-          zoho("getAll","Labor_Entries",{criteria:`work_date=="${fmtDate}"`}),
+          zoho("getAll","PAR_Entries",{criteria:`Entry_Date=="${zohoDate}"`}),
+          zoho("getAll","Sales_Entries",{criteria:`Sale_Date=="${zohoDate}"`}),
+          zoho("getAll","Labor_Entries",{criteria:`Work_Date=="${zohoDate}"`}),
         ]);
         // Build PAR map
         const pm={};
