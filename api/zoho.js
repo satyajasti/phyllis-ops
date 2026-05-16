@@ -182,8 +182,17 @@ export default async function handler(req, res) {
         if (criteria) url += `&criteria=${encodeURIComponent(criteria)}`;
         const r = await fetch(url, { method: "GET", headers });
         const d = await r.json();
+        console.log("Zoho raw response for", reportName, ":", JSON.stringify(d).substring(0,500));
         const normalized = normalize(form, d.data || []);
         return res.status(200).json(normalized);
+      }
+
+      // ── DEBUG raw response ──
+      case "debug": {
+        let url = `${ZOHO_BASE}/report/${reportName}?max_records=5`;
+        const r = await fetch(url, { method: "GET", headers });
+        const d = await r.json();
+        return res.status(200).json(d);
       }
 
       // ── CREATE record ──
