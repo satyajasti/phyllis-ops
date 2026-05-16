@@ -27,9 +27,9 @@ const FORMS = {
 const FIELD_MAPS = {
   Employees: (d) => ({
     Name: { first_name: d.first_name || "", last_name: d.last_name || "" },
-    Designation: d.designation || "",
-    Salary: d.hourly_rate || d.Salary || 0,
-    pin: d.pin || "",
+    designation: d.designation || "",
+    salary: d.hourly_rate || 0,
+    pinin: d.pin || "",
   }),
   Recipes: (d) => ({
     Recipe_Name: d.recipe_name || d.name || "",
@@ -83,11 +83,11 @@ function normalize(form, records) {
     if (form === "Employees") {
       return {
         ID: r.ID,
-        first_name: r.Name?.first_name || r.Name?.value?.split(" ")[0] || "",
-        last_name: r.Name?.last_name || r.Name?.value?.split(" ")[1] || "",
-        designation: r.Designation || "",
-        hourly_rate: parseFloat(r.Salary || 0),
-        pin: r.pin || "",
+        first_name: r.Name?.first_name || "",
+        last_name: r.Name?.last_name || "",
+        designation: r.designation || "",
+        hourly_rate: parseFloat(r.salary || 0),
+        pin: r.pinin || "",
         is_active: r.Is_Active || "",
       };
     }
