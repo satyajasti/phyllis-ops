@@ -78,13 +78,34 @@ export default async function handler(req, res) {
       const userAccessToken = tokenData.access_token;
 
       // 2. Get the user's profile (email) from Zoho
-      const profileRes = await fetch("https://accounts.zoho.com/oauth/user/info", {
-        headers: { Authorization: `Zoho-oauthtoken ${userAccessToken}` },
-      });
-      const profile = await profileRes.json();
-      const email = (profile.Email || profile.email || "").toLowerCase().trim();
+      // Try /oauth/user/info first, then /userinfo as fallback
+      let email = "";
+      try {
+        const profileRes = await fetch("https://accounts.zoho.com/oauth/user/info", {
+          headers: { Authorization: `Zoho-oauthtoken ${userAccessToken}` },
+        });
+        const profile = await profileRes.json();
+        email = (
+          profile.Email || profile.email ||
+          profile.ZPUID || profile.mail ||
+          profile.Display_Name || ""
+        ).toLowerCase().trim();
+        // If it looks like a user ID not an email, clear it
+        if (email && !email.includes("@")) email = "";
+      } catch(_) {}
 
-      if (!email) return res.status(401).json({ error: "Could not retrieve email from Zoho" });
+      // Fallback: try OIDC userinfo endpoint
+      if (!email) {
+        try {
+          const uiRes = await fetch("https://accounts.zoho.com/oauth/v2/userinfo", {
+            headers: { Authorization: `Zoho-oauthtoken ${userAccessToken}` },
+          });
+          const ui = await uiRes.json();
+          email = (ui.email || ui.Email || "").toLowerCase().trim();
+        } catch(_) {}
+      }
+
+      if (!email) return res.status(401).json({ error: "Could not retrieve email from Zoho", debug: "profile_fetch_failed" });
 
       // 3. Check if this is the admin (owner)
       const ADMIN_EMAIL = process.env.ZOHO_ADMIN_EMAIL || "";
