@@ -27,6 +27,11 @@ function isActive(emp) {
   return !["false", "no", "inactive", "disabled", "0"].includes(value);
 }
 
+function isZohoError(data) {
+  if (!data?.code) return false;
+  return String(data.code) !== "3000";
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
@@ -40,7 +45,7 @@ export default async function handler(req, res) {
       headers: { Authorization: `Zoho-oauthtoken ${token}` },
     });
     const data = await response.json();
-    if (!response.ok || data.code) {
+    if (!response.ok || isZohoError(data)) {
       return res.status(502).json({
         error: "zoho_employee_load_failed",
         message: data.description || data.message || "Could not load employees from Zoho Creator.",
