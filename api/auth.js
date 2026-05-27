@@ -61,9 +61,11 @@ function parseModules(value) {
 }
 
 function normalizeEmployee(emp) {
-  const name = emp.Name || {};
-  const firstName = firstValue(emp, ["First_Name", "first_name"], name.first_name || "");
-  const lastName = firstValue(emp, ["Last_Name", "last_name"], name.last_name || "");
+  const name = emp.Name || "";
+  const nameText = typeof name === "string" ? name : String(name.display_value || "").trim();
+  const parts = nameText.split(/\s+/).filter(Boolean);
+  const firstName = firstValue(emp, ["First_Name", "first_name"], typeof name === "object" ? name.first_name || "" : parts[0] || "");
+  const lastName = firstValue(emp, ["Last_Name", "last_name"], typeof name === "object" ? name.last_name || "" : parts.slice(1).join(" "));
   const allowedModules = parseModules(firstValue(emp, [
     "Allowed_Modules",
     "allowed_modules",

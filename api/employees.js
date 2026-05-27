@@ -12,7 +12,9 @@ function firstValue(record, keys, fallback = "") {
 }
 
 function employeeName(emp) {
-  const name = emp.Name || {};
+  const name = emp.Name || "";
+  if (typeof name === "string") return name.trim() || "Unnamed employee";
+  if (name.display_value) return String(name.display_value).trim() || "Unnamed employee";
   const firstName = firstValue(emp, ["First_Name", "first_name"], name.first_name || "");
   const lastName = firstValue(emp, ["Last_Name", "last_name"], name.last_name || "");
   return `${firstName} ${lastName}`.trim() || "Unnamed employee";
@@ -43,8 +45,8 @@ export default async function handler(req, res) {
       .map(emp => ({
         ID: emp.ID,
         id: emp.ID,
-        first_name: firstValue(emp, ["First_Name", "first_name"], emp.Name?.first_name || ""),
-        last_name: firstValue(emp, ["Last_Name", "last_name"], emp.Name?.last_name || ""),
+        first_name: firstValue(emp, ["First_Name", "first_name"], typeof emp.Name === "object" ? emp.Name?.first_name || "" : ""),
+        last_name: firstValue(emp, ["Last_Name", "last_name"], typeof emp.Name === "object" ? emp.Name?.last_name || "" : ""),
         name: employeeName(emp),
         email: firstValue(emp, ["Email", "email"]),
         designation: firstValue(emp, ["Designation", "designation", "Role_Name", "role_name"], "Staff"),

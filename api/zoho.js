@@ -91,10 +91,15 @@ function normalize(form, records) {
   if (!records || !Array.isArray(records)) return [];
   return records.map((r) => {
     if (form === "Employees") {
+      const name = r.Name || "";
+      const nameText = typeof name === "string" ? name : String(name.display_value || "").trim();
+      const parts = nameText.split(/\s+/).filter(Boolean);
       return {
         ID: r.ID,
-        first_name: r.Name?.first_name || "",
-        last_name: r.Name?.last_name || "",
+        name: nameText,
+        first_name: r.First_Name || r.first_name || (typeof name === "object" ? name.first_name || "" : parts[0] || ""),
+        last_name: r.Last_Name || r.last_name || (typeof name === "object" ? name.last_name || "" : parts.slice(1).join(" ")),
+        email: r.Email || r.email || "",
         designation: r.designation || "",
         hourly_rate: parseFloat(r.salary || 0),
         pin: r.pinin || "",
