@@ -277,6 +277,7 @@ export default function PhyllisOps(){
         clearTimeout(timeout);
         const d=await r.json();
         if(!cancelled&&d.success&&Array.isArray(d.employees)) setEmps(d.employees);
+        else if(!cancelled) setStaffErr(d.message||d.error||"Could not load employees from Zoho.");
       }catch(e){
         console.error("Employee login load error",e);
         if(!cancelled) setStaffErr("Could not load employees. Restart the local server or try the deployed app.");
