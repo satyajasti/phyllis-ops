@@ -185,6 +185,7 @@ export default function PhyllisOps(){
   const [staffQuery,setStaffQuery] = useState("");
   const [staffPin,setStaffPin]     = useState("");
   const [staffErr,setStaffErr]     = useState("");
+  const [loginEmployeesLoading,setLoginEmployeesLoading] = useState(false);
   const [tab,setTab]         = useState("Dashboard");
   const [date,setDate]       = useState(new Date().toISOString().split("T")[0]);
 
@@ -262,6 +263,19 @@ export default function PhyllisOps(){
       setLoading(false);
     })();
   },[]);
+
+  useEffect(()=>{
+    if(me||employees.length>0) return;
+    (async()=>{
+      setLoginEmployeesLoading(true);
+      try{
+        const r=await fetch("/api/employees");
+        const d=await r.json();
+        if(d.success&&Array.isArray(d.employees)) setEmps(d.employees);
+      }catch(e){console.error("Employee login load error",e);}
+      setLoginEmployeesLoading(false);
+    })();
+  },[me,employees.length]);
 
   // ─── Load daily data when date changes ───
   useEffect(()=>{
@@ -480,8 +494,8 @@ export default function PhyllisOps(){
     else setPinErr("Incorrect PIN");
   };
 
-  const empName=emp=>`${emp.first_name||emp.First_Name||""} ${emp.last_name||emp.Last_Name||""}`.trim()||"Unnamed employee";
-  const empRole=emp=>emp.designation||emp.Designation||"Staff";
+  const empName=emp=>emp.name||`${emp.first_name||emp.First_Name||""} ${emp.last_name||emp.Last_Name||""}`.trim()||"Unnamed employee";
+  const empRole=emp=>emp.designation||emp.Designation||emp.role||"Staff";
   const activeEmployees=employees.filter(emp=>{
     const raw=emp.is_active ?? emp.Is_Active;
     const val=String(raw ?? "true").toLowerCase();
@@ -540,7 +554,7 @@ export default function PhyllisOps(){
     amber:{color:"#c8a96e"},green:{color:"#7eb87e"},red:{color:"#c07070"},
   };
 
-  if(loading) return(
+  if(loading&&me) return(
     <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
       <div style={{...S.lbl}}>Connecting to Zoho Creator…</div>
       <div style={{fontSize:"12px",color:"#444"}}>Loading your data</div>
@@ -555,12 +569,12 @@ export default function PhyllisOps(){
           <div style={{fontSize:"36px",marginBottom:"10px"}}>🍳</div>
           <div style={{...S.lbl,marginBottom:"6px"}}>Phyllis Brunch · Marietta GA</div>
           <div style={{fontSize:"22px",color:"#f0e8d8",letterSpacing:"1px",fontWeight:"600"}}>Operations Portal</div>
-          <div style={{fontSize:"12px",color:"#555",marginTop:"6px"}}>Powered by Zoho Creator & Zoho Shifts</div>
+          <div style={{fontSize:"12px",color:"#555",marginTop:"6px"}}>Staff PIN Access</div>
         </div>
         {oauthLoading&&(
           <div style={{textAlign:"center",padding:"20px 0"}}>
             <div style={{...S.lbl,marginBottom:"8px"}}>Signing you in…</div>
-            <div style={{fontSize:"12px",color:"#555"}}>Verifying your Zoho account</div>
+            <div style={{fontSize:"12px",color:"#555"}}>Checking your PIN</div>
           </div>
         )}
         {(loginErr||staffErr)&&(
@@ -576,7 +590,10 @@ export default function PhyllisOps(){
                 onChange={e=>{setStaffQuery(e.target.value);setSelEmp("");setStaffErr("");}}
                 style={{...S.inp,width:"100%",boxSizing:"border-box",marginBottom:"8px"}}/>
               <div style={{...S.card,maxHeight:"180px",overflowY:"auto",marginBottom:"12px"}}>
-                {staffMatches.length===0&&(
+                {loginEmployeesLoading&&(
+                  <div style={{padding:"12px",fontSize:"12px",color:"#555"}}>Loading employees...</div>
+                )}
+                {!loginEmployeesLoading&&staffMatches.length===0&&(
                   <div style={{padding:"12px",fontSize:"12px",color:"#555"}}>No active employees found.</div>
                 )}
                 {staffMatches.map(emp=>{
@@ -605,14 +622,7 @@ export default function PhyllisOps(){
             </div>
             <div style={{borderTop:"1px solid #1e1c18",paddingTop:"18px"}}>
               <div style={{...S.lbl,marginBottom:"10px"}}>Admin login</div>
-            <button onClick={doZohoLogin}
-              style={{...S.btn,width:"100%",padding:"14px",fontSize:"14px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",boxSizing:"border-box"}}>
-              <span style={{fontSize:"18px"}}>🔐</span> Sign in with Zoho
-            </button>
-            <div style={{marginTop:"10px",fontSize:"11px",color:"#444",textAlign:"center",lineHeight:"1.6"}}>
-              Use the same email & password you use for Zoho Shifts
-            </div>
-            <div style={{marginTop:"24px",borderTop:"1px solid #1e1c18",paddingTop:"16px"}}>
+            <div style={{marginTop:"8px"}}>
               <button onClick={()=>setShowPinFallback(p=>!p)}
                 style={{background:"none",border:"none",color:"#333",fontSize:"11px",cursor:"pointer",width:"100%",textAlign:"center"}}>
                 {showPinFallback?"▲ Hide":"▼ Admin PIN login"}
