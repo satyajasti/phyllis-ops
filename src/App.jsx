@@ -182,6 +182,9 @@ export default function PhyllisOps(){
   const [selEmp,setSelEmp]   = useState("");
   const [pin,setPin]         = useState("");
   const [pinErr,setPinErr]   = useState("");
+  const [staffQuery,setStaffQuery] = useState("");
+  const [staffPin,setStaffPin]     = useState("");
+  const [staffErr,setStaffErr]     = useState("");
   const [tab,setTab]         = useState("Dashboard");
   const [date,setDate]       = useState(new Date().toISOString().split("T")[0]);
 
@@ -477,6 +480,47 @@ export default function PhyllisOps(){
     else setPinErr("Incorrect PIN");
   };
 
+  const empName=emp=>`${emp.first_name||emp.First_Name||""} ${emp.last_name||emp.Last_Name||""}`.trim()||"Unnamed employee";
+  const empRole=emp=>emp.designation||emp.Designation||"Staff";
+  const activeEmployees=employees.filter(emp=>{
+    const raw=emp.is_active ?? emp.Is_Active;
+    const val=String(raw ?? "true").toLowerCase();
+    return !["false","no","inactive","disabled","0"].includes(val);
+  });
+  const staffMatches=activeEmployees
+    .filter(emp=>{
+      const q=staffQuery.trim().toLowerCase();
+      if(!q) return true;
+      return `${empName(emp)} ${empRole(emp)} ${emp.email||emp.Email||""}`.toLowerCase().includes(q);
+    })
+    .slice(0,8);
+  const selectedStaff=activeEmployees.find(emp=>String(emp.ID||emp.id)===String(selEmp));
+
+  const doStaffLogin=async()=>{
+    setStaffErr("");
+    if(!selEmp){ setStaffErr("Please select your name."); return; }
+    if(!staffPin){ setStaffErr("Please enter your PIN."); return; }
+    setOauthLoading(true);
+    try{
+      const r=await fetch("/api/auth?action=verify-pin",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({employeeId:selEmp,pin:staffPin}),
+      });
+      const d=await r.json();
+      if(d.success){
+        setMe(d.user);
+        setStaffPin("");
+        setStaffErr("");
+      }else{
+        setStaffErr(d.message||d.error||"Invalid PIN");
+      }
+    }catch(e){
+      setStaffErr("Network error. Please try again.");
+    }
+    setOauthLoading(false);
+  };
+
   // Dynamic tabs based on allowed modules
   const TAB_ORDER=["Dashboard","My Schedule","Clock In/Out","My Timesheet","Time Off","PAR Entry","Sales Entry","Staff Hours","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Scheduling","Time Off Requests","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
   const allowed=isAdmin?["ALL"]:(me?.allowedModules||DEFAULT_STAFF_MODULES);
@@ -519,13 +563,48 @@ export default function PhyllisOps(){
             <div style={{fontSize:"12px",color:"#555"}}>Verifying your Zoho account</div>
           </div>
         )}
-        {loginErr&&(
+        {(loginErr||staffErr)&&(
           <div style={{background:"#1a0a0a",border:"1px solid #3a1e1e",borderRadius:"3px",padding:"12px 14px",marginBottom:"18px",fontSize:"12px",color:"#c07070",lineHeight:"1.6"}}>
-            {loginErr}
+            {loginErr||staffErr}
           </div>
         )}
         {!oauthLoading&&(
           <>
+            <div style={{marginBottom:"22px"}}>
+              <div style={{...S.lbl,marginBottom:"8px",color:"#7eb87e"}}>Staff login</div>
+              <input value={staffQuery} placeholder="Search your name, email, or role"
+                onChange={e=>{setStaffQuery(e.target.value);setSelEmp("");setStaffErr("");}}
+                style={{...S.inp,width:"100%",boxSizing:"border-box",marginBottom:"8px"}}/>
+              <div style={{...S.card,maxHeight:"180px",overflowY:"auto",marginBottom:"12px"}}>
+                {staffMatches.length===0&&(
+                  <div style={{padding:"12px",fontSize:"12px",color:"#555"}}>No active employees found.</div>
+                )}
+                {staffMatches.map(emp=>{
+                  const id=emp.ID||emp.id;
+                  const selected=String(selEmp)===String(id);
+                  return(
+                    <button key={id} onClick={()=>{setSelEmp(id);setStaffQuery(empName(emp));setStaffErr("");}}
+                      style={{width:"100%",textAlign:"left",padding:"10px 12px",background:selected?"#0e1e0e":"transparent",border:"none",borderBottom:"1px solid #1e1c18",cursor:"pointer",color:selected?"#a0d4a0":"#d4c9b8"}}>
+                      <div style={{fontSize:"13px",fontWeight:"700"}}>{empName(emp)}</div>
+                      <div style={{fontSize:"11px",color:"#666",marginTop:"2px"}}>{emp.email||emp.Email||empRole(emp)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedStaff&&(
+                <div style={{background:"#0a160a",border:"1px solid #1a3a1a",padding:"10px 12px",marginBottom:"12px",fontSize:"12px",color:"#7eb87e"}}>
+                  Selected: {empName(selectedStaff)} · {empRole(selectedStaff)}
+                </div>
+              )}
+              <div style={{...S.lbl,marginBottom:"6px"}}>PIN</div>
+              <input type="password" value={staffPin} placeholder="Enter your PIN"
+                onChange={e=>{setStaffPin(e.target.value);setStaffErr("");}}
+                onKeyDown={e=>e.key==="Enter"&&doStaffLogin()}
+                style={{...S.inp,width:"100%",boxSizing:"border-box",marginBottom:"10px"}}/>
+              <button onClick={doStaffLogin} style={{...S.btn,width:"100%",padding:"12px"}}>Sign In</button>
+            </div>
+            <div style={{borderTop:"1px solid #1e1c18",paddingTop:"18px"}}>
+              <div style={{...S.lbl,marginBottom:"10px"}}>Admin login</div>
             <button onClick={doZohoLogin}
               style={{...S.btn,width:"100%",padding:"14px",fontSize:"14px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",boxSizing:"border-box"}}>
               <span style={{fontSize:"18px"}}>🔐</span> Sign in with Zoho
@@ -549,6 +628,7 @@ export default function PhyllisOps(){
                   <button onClick={doLogin} style={{...S.btn,width:"100%"}}>Sign In as Admin</button>
                 </div>
               )}
+            </div>
             </div>
           </>
         )}

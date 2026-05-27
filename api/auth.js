@@ -32,6 +32,70 @@ const SCOPES = [
   "profile",
 ].join(",");
 
+const DEFAULT_STAFF_MODULES = [
+  "Dashboard",
+  "PAR Entry",
+  "Sales Entry",
+  "Staff Hours",
+  "My Schedule",
+  "Clock In/Out",
+  "My Timesheet",
+  "Time Off",
+  "Temp Log",
+  "Checklists",
+  "Waste Log",
+];
+
+function firstValue(record, keys, fallback = "") {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return fallback;
+}
+
+function parseModules(value) {
+  if (Array.isArray(value)) return value.map(String).map(m => m.trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(",").map(m => m.trim()).filter(Boolean);
+  return [];
+}
+
+function normalizeEmployee(emp) {
+  const name = emp.Name || {};
+  const firstName = firstValue(emp, ["First_Name", "first_name"], name.first_name || "");
+  const lastName = firstValue(emp, ["Last_Name", "last_name"], name.last_name || "");
+  const allowedModules = parseModules(firstValue(emp, [
+    "Allowed_Modules",
+    "allowed_modules",
+    "Modules_Provided",
+    "modules_provided",
+  ]));
+
+  return {
+    id: emp.ID,
+    email: firstValue(emp, ["Email", "email"]),
+    firstName,
+    lastName,
+    designation: firstValue(emp, ["Designation", "designation", "Role_Name", "role_name"]),
+    hourlyRate: parseFloat(firstValue(emp, ["Hourly_Rate", "hourly_rate", "salary"], 0)),
+    isAdmin: false,
+    allowedModules: allowedModules.length ? allowedModules : DEFAULT_STAFF_MODULES,
+    roleTemplate: firstValue(emp, ["Role_Template", "role_template"]),
+    shiftsEmployeeId: firstValue(emp, ["Shifts_Employee_ID", "shifts_employee_id"], null),
+  };
+}
+
+function employeePin(emp) {
+  return String(firstValue(emp, ["PIN", "Pin", "pin", "pinin", "Pinin"])).trim();
+}
+
+function isEmployeeActive(emp) {
+  const raw = firstValue(emp, ["Is_Active", "is_active"], true);
+  if (typeof raw === "boolean") return raw;
+  const value = String(raw).trim().toLowerCase();
+  return !["false", "no", "inactive", "disabled", "0"].includes(value);
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -175,9 +239,11 @@ export default async function handler(req, res) {
   // ── POST /api/auth?action=verify-pin ──
   // Legacy PIN fallback for admin during transition
   if (action === "verify-pin" && req.method === "POST") {
-    const { pin } = req.body || {};
+    const { employeeId, pin } = req.body || {};
+    if (!pin) return res.status(400).json({ error: "Missing PIN" });
+
     const ADMIN_PIN = process.env.ZOHO_ADMIN_PIN || "satya";
-    if (pin === ADMIN_PIN) {
+    if (!employeeId && pin === ADMIN_PIN) {
       return res.status(200).json({
         success: true,
         user: {
@@ -191,7 +257,46 @@ export default async function handler(req, res) {
         },
       });
     }
-    return res.status(401).json({ error: "Invalid PIN" });
+
+    if (!employeeId) return res.status(400).json({ error: "Missing employee" });
+
+    try {
+      const creatorToken = await getZohoToken();
+      const empRes = await fetch(`${ZOHO_BASE}/report/All_Employees?max_records=200`, {
+        headers: { Authorization: `Zoho-oauthtoken ${creatorToken}` },
+      });
+      const empData = await empRes.json();
+      const emp = (empData.data || []).find(record => String(record.ID) === String(employeeId));
+
+      if (!emp) {
+        return res.status(404).json({
+          error: "employee_not_found",
+          message: "Employee not found. Ask a manager to check the Zoho employee table.",
+        });
+      }
+
+      if (!isEmployeeActive(emp)) {
+        return res.status(403).json({
+          error: "inactive_employee",
+          message: "This employee is inactive. Please contact your manager.",
+        });
+      }
+
+      if (employeePin(emp) !== String(pin).trim()) {
+        return res.status(401).json({
+          error: "invalid_pin",
+          message: "Invalid PIN. Please check and try again.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        user: normalizeEmployee(emp),
+      });
+    } catch (e) {
+      console.error("PIN verification error:", e);
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   return res.status(400).json({ error: "Unknown action" });
