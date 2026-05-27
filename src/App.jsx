@@ -460,101 +460,456 @@ export default function PhyllisOps(){
     }catch(e){console.error("Cost save error",e);}
   };
 
-  // ─── Zoho OAuth Login ───
-  const doZohoLogin=async()=>{
-    setOauthLoading(true); setLoginErr("");
-    try{
-      const r=await fetch("/api/auth?action=login-url");
-      const d=await r.json();
-      if(d.url) window.location.href=d.url;
-      else { setLoginErr("Could not get login URL."); setOauthLoading(false); }
-    }catch(e){ setLoginErr("Network error."); setOauthLoading(false); }
-  };
+  // ═══════════════════════════════════════════════════════════════════════════
+// UPDATED LOGIN SECTION FOR App.jsx
+// Replace the login section (around lines 463-555) with this code
+// ═══════════════════════════════════════════════════════════════════════════
 
-  // ─── Admin PIN fallback ───
-  const doLogin=()=>{
-    if(pin==="satya"){ setMe(ADMIN); setPinErr(""); }
-    else setPinErr("Incorrect PIN");
-  };
+// Add these state variables at the top with other useState declarations:
+const [loginTab, setLoginTab] = useState("zoho"); // "zoho" or "staff"
+const [employees, setEmployees] = useState([]);
+const [filteredEmployees, setFilteredEmployees] = useState([]);
+const [searchQuery, setSearchQuery] = useState("");
+const [selectedEmployee, setSelectedEmployee] = useState(null);
+const [staffPin, setStaffPin] = useState("");
+const [staffPinErr, setStaffPinErr] = useState("");
+const [loadingEmployees, setLoadingEmployees] = useState(false);
 
-  // Dynamic tabs based on allowed modules
-  const TAB_ORDER=["Dashboard","My Schedule","Clock In/Out","My Timesheet","Time Off","PAR Entry","Sales Entry","Staff Hours","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Scheduling","Time Off Requests","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
-  const allowed=isAdmin?["ALL"]:(me?.allowedModules||DEFAULT_STAFF_MODULES);
-  const canSee=(mod)=>allowed.includes("ALL")||allowed.includes(mod);
-  const TABS=TAB_ORDER.filter(t=>canSee(t));
+// Add this useEffect to fetch employees when staff tab is opened:
+useEffect(() => {
+  if (loginTab === "staff" && employees.length === 0) {
+    fetchEmployees();
+  }
+}, [loginTab]);
 
-  const S={
-    page:{minHeight:"100vh",background:"#0c0b09",color:"#d4c9b8",fontFamily:"'Trebuchet MS',sans-serif"},
-    card:{background:"#141210",border:"1px solid #252220",borderRadius:"3px"},
-    lbl:{fontSize:"10px",letterSpacing:"3px",textTransform:"uppercase",color:"#666"},
-    inp:{background:"#0c0b09",border:"1px solid #2e2b26",color:"#d4c9b8",padding:"6px 10px",fontSize:"13px",borderRadius:"2px",outline:"none"},
-    btn:{background:"#c8a96e",color:"#0c0b09",border:"none",padding:"8px 18px",fontSize:"12px",fontWeight:"700",letterSpacing:"1px",cursor:"pointer",borderRadius:"2px"},
-    btnSm:{background:"#1e2820",color:"#7eb87e",border:"1px solid #2e4830",padding:"5px 12px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"},
-    btnDanger:{background:"none",border:"1px solid #3a1e1e",color:"#8a5555",padding:"5px 12px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"},
-    th:{padding:"8px 12px",textAlign:"left",fontSize:"10px",letterSpacing:"1px",textTransform:"uppercase",color:"#555",background:"#100f0d"},
-    td:{padding:"8px 12px",fontSize:"13px"},
-    amber:{color:"#c8a96e"},green:{color:"#7eb87e"},red:{color:"#c07070"},
-  };
+// Add these functions:
+const fetchEmployees = async () => {
+  setLoadingEmployees(true);
+  try {
+    const res = await fetch("/api/employees");
+    const data = await res.json();
+    if (data.success && data.employees) {
+      setEmployees(data.employees);
+      setFilteredEmployees(data.employees);
+    }
+  } catch (error) {
+    console.error("Error fetching employees:", error);
+    setLoginErr("Failed to load employees. Please try again.");
+  } finally {
+    setLoadingEmployees(false);
+  }
+};
 
-  if(loading) return(
-    <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
-      <div style={{...S.lbl}}>Connecting to Zoho Creator…</div>
-      <div style={{fontSize:"12px",color:"#444"}}>Loading your data</div>
+const handleSearchChange = (e) => {
+  const query = e.target.value.toLowerCase();
+  setSearchQuery(query);
+  
+  if (query === "") {
+    setFilteredEmployees(employees);
+  } else {
+    const filtered = employees.filter(emp =>
+      emp.name.toLowerCase().includes(query) ||
+      emp.role.toLowerCase().includes(query)
+    );
+    setFilteredEmployees(filtered);
+  }
+};
+
+const handleSelectEmployee = (emp) => {
+  setSelectedEmployee(emp);
+  setSearchQuery(emp.name);
+  setFilteredEmployees([]);
+  setStaffPin("");
+  setStaffPinErr("");
+};
+
+const doStaffLogin = async () => {
+  if (!selectedEmployee) {
+    setStaffPinErr("Please select an employee");
+    return;
+  }
+  if (!staffPin) {
+    setStaffPinErr("Please enter PIN");
+    return;
+  }
+
+  setOauthLoading(true);
+  setStaffPinErr("");
+  
+  try {
+    const res = await fetch("/api/auth?action=verify-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employeeId: selectedEmployee.id,
+        pin: staffPin,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      setMe(data.user);
+      sessionStorage.setItem("phyllis_user", JSON.stringify(data.user));
+      setPin("");
+      setStaffPin("");
+      setSelectedEmployee(null);
+      setSearchQuery("");
+    } else {
+      setStaffPinErr(data.message || data.error || "Invalid PIN");
+    }
+  } catch (error) {
+    console.error("Login error:", error);
+    setStaffPinErr("Network error. Please try again.");
+  } finally {
+    setOauthLoading(false);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REPLACE THE LOGIN JSX (lines ~510-555) WITH THIS:
+// ═══════════════════════════════════════════════════════════════════════════
+
+const loginJSX = (
+  <div style={{
+    background: "#0a0906",
+    borderRadius: "8px",
+    padding: "32px 24px",
+    maxWidth: "420px",
+    margin: "0 auto",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+  }}>
+    {/* Header */}
+    <div style={{ textAlign: "center", marginBottom: "28px" }}>
+      <div style={{ fontSize: "32px", marginBottom: "12px" }}>🍳</div>
+      <div style={{ ...S.amber, fontSize: "18px", fontWeight: "700", letterSpacing: "1px" }}>
+        Phyllis Brunch
+      </div>
+      <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
+        Marietta GA
+      </div>
+      <div style={{ fontSize: "16px", color: "#999", marginTop: "12px", fontWeight: "500" }}>
+        Operations Portal
+      </div>
+      <div style={{ fontSize: "12px", color: "#555", marginTop: "6px" }}>
+        Powered by Zoho Creator & Zoho Shifts
+      </div>
     </div>
-  );
 
-  // ══ LOGIN ══
-  if(!me) return(
-    <div style={{...S.page,display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
-      <div style={{...S.card,padding:"44px 40px",width:"400px",maxWidth:"92vw"}}>
-        <div style={{textAlign:"center",marginBottom:"36px"}}>
-          <div style={{fontSize:"36px",marginBottom:"10px"}}>🍳</div>
-          <div style={{...S.lbl,marginBottom:"6px"}}>Phyllis Brunch · Marietta GA</div>
-          <div style={{fontSize:"22px",color:"#f0e8d8",letterSpacing:"1px",fontWeight:"600"}}>Operations Portal</div>
-          <div style={{fontSize:"12px",color:"#555",marginTop:"6px"}}>Powered by Zoho Creator & Zoho Shifts</div>
+    {/* Loading State */}
+    {oauthLoading && (
+      <div style={{ textAlign: "center", padding: "20px 0" }}>
+        <div style={{ ...S.lbl, marginBottom: "8px" }}>Signing you in…</div>
+        <div style={{ fontSize: "12px", color: "#555" }}>Verifying your account</div>
+      </div>
+    )}
+
+    {/* Error Message */}
+    {(loginErr || staffPinErr) && (
+      <div style={{
+        background: "#1a0a0a",
+        border: "1px solid #3a1e1e",
+        borderRadius: "3px",
+        padding: "12px 14px",
+        marginBottom: "18px",
+        fontSize: "12px",
+        color: "#c07070",
+        lineHeight: "1.6",
+      }}>
+        {loginErr || staffPinErr}
+      </div>
+    )}
+
+    {!oauthLoading && (
+      <>
+        {/* Tabs */}
+        <div style={{
+          display: "flex",
+          gap: "8px",
+          marginBottom: "20px",
+          borderBottom: "1px solid #1e1c18",
+        }}>
+          <button
+            onClick={() => {
+              setLoginTab("zoho");
+              setLoginErr("");
+              setStaffPinErr("");
+            }}
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              background: loginTab === "zoho" ? "#2a1e0a" : "transparent",
+              border: "none",
+              color: loginTab === "zoho" ? "#c8a96e" : "#666",
+              fontSize: "13px",
+              fontWeight: loginTab === "zoho" ? "600" : "400",
+              cursor: "pointer",
+              borderBottom: loginTab === "zoho" ? "2px solid #c8a96e" : "none",
+              transition: "all 0.2s",
+            }}
+          >
+            🔐 Manager Login
+          </button>
+          <button
+            onClick={() => {
+              setLoginTab("staff");
+              setLoginErr("");
+              setStaffPinErr("");
+            }}
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              background: loginTab === "staff" ? "#0a160a" : "transparent",
+              border: "none",
+              color: loginTab === "staff" ? "#5a9a5a" : "#666",
+              fontSize: "13px",
+              fontWeight: loginTab === "staff" ? "600" : "400",
+              cursor: "pointer",
+              borderBottom: loginTab === "staff" ? "2px solid #5a9a5a" : "none",
+              transition: "all 0.2s",
+            }}
+          >
+            👨‍🍳 Staff Login
+          </button>
         </div>
-        {oauthLoading&&(
-          <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{...S.lbl,marginBottom:"8px"}}>Signing you in…</div>
-            <div style={{fontSize:"12px",color:"#555"}}>Verifying your Zoho account</div>
-          </div>
-        )}
-        {loginErr&&(
-          <div style={{background:"#1a0a0a",border:"1px solid #3a1e1e",borderRadius:"3px",padding:"12px 14px",marginBottom:"18px",fontSize:"12px",color:"#c07070",lineHeight:"1.6"}}>
-            {loginErr}
-          </div>
-        )}
-        {!oauthLoading&&(
+
+        {/* Zoho Login Tab */}
+        {loginTab === "zoho" && (
           <>
-            <button onClick={doZohoLogin}
-              style={{...S.btn,width:"100%",padding:"14px",fontSize:"14px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",boxSizing:"border-box"}}>
-              <span style={{fontSize:"18px"}}>🔐</span> Sign in with Zoho
+            <button
+              onClick={doZohoLogin}
+              style={{
+                ...S.btn,
+                width: "100%",
+                padding: "14px",
+                fontSize: "14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+                boxSizing: "border-box",
+              }}
+            >
+              <span style={{ fontSize: "18px" }}>🔐</span> Sign in with Zoho
             </button>
-            <div style={{marginTop:"10px",fontSize:"11px",color:"#444",textAlign:"center",lineHeight:"1.6"}}>
+            <div style={{
+              marginTop: "10px",
+              fontSize: "11px",
+              color: "#444",
+              textAlign: "center",
+              lineHeight: "1.6",
+            }}>
               Use the same email & password you use for Zoho Shifts
-            </div>
-            <div style={{marginTop:"24px",borderTop:"1px solid #1e1c18",paddingTop:"16px"}}>
-              <button onClick={()=>setShowPinFallback(p=>!p)}
-                style={{background:"none",border:"none",color:"#333",fontSize:"11px",cursor:"pointer",width:"100%",textAlign:"center"}}>
-                {showPinFallback?"▲ Hide":"▼ Admin PIN login"}
-              </button>
-              {showPinFallback&&(
-                <div style={{marginTop:"12px"}}>
-                  <div style={{...S.lbl,marginBottom:"6px"}}>Admin PIN</div>
-                  <input type="password" value={pin} placeholder="Enter admin PIN"
-                    onChange={e=>setPin(e.target.value)}
-                    onKeyDown={e=>e.key==="Enter"&&doLogin()}
-                    style={{...S.inp,width:"100%",boxSizing:"border-box",marginBottom:"10px"}}/>
-                  {pinErr&&<div style={{color:"#c07070",fontSize:"12px",marginBottom:"10px"}}>{pinErr}</div>}
-                  <button onClick={doLogin} style={{...S.btn,width:"100%"}}>Sign In as Admin</button>
-                </div>
-              )}
             </div>
           </>
         )}
-      </div>
-    </div>
-  );
+
+        {/* Staff Login Tab */}
+        {loginTab === "staff" && (
+          <div>
+            {loadingEmployees ? (
+              <div style={{ textAlign: "center", padding: "20px" }}>
+                <div style={{ fontSize: "12px", color: "#666" }}>Loading employees...</div>
+              </div>
+            ) : (
+              <>
+                {/* Search/Select Employee */}
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ ...S.lbl, marginBottom: "6px", display: "block" }}>
+                    Select Your Name
+                  </label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type="text"
+                      placeholder="Search by name or role..."
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      onFocus={() => {
+                        if (employees.length > 0) {
+                          setFilteredEmployees(employees);
+                        }
+                      }}
+                      style={{
+                        ...S.inp,
+                        width: "100%",
+                        boxSizing: "border-box",
+                        paddingRight: "32px",
+                      }}
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => {
+                          setSearchQuery("");
+                          setSelectedEmployee(null);
+                          setFilteredEmployees(employees);
+                        }}
+                        style={{
+                          position: "absolute",
+                          right: "8px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "none",
+                          border: "none",
+                          color: "#666",
+                          cursor: "pointer",
+                          fontSize: "16px",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
+
+                    {/* Dropdown */}
+                    {searchQuery && filteredEmployees.length > 0 && (
+                      <div style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        right: 0,
+                        background: "#1a1814",
+                        border: "1px solid #2e2b26",
+                        borderTop: "none",
+                        borderRadius: "0 0 4px 4px",
+                        maxHeight: "200px",
+                        overflowY: "auto",
+                        zIndex: 10,
+                      }}>
+                        {filteredEmployees.map((emp) => (
+                          <button
+                            key={emp.id}
+                            onClick={() => handleSelectEmployee(emp)}
+                            style={{
+                              width: "100%",
+                              padding: "10px 12px",
+                              background: "none",
+                              border: "none",
+                              borderBottom: "1px solid #2e2b26",
+                              textAlign: "left",
+                              cursor: "pointer",
+                              color: "#ccc",
+                              fontSize: "13px",
+                              transition: "background 0.2s",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = "#2a1e0a";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = "none";
+                            }}
+                          >
+                            <div style={{ fontWeight: "500" }}>👨 {emp.name}</div>
+                            <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>
+                              {emp.role}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Selected Employee Display */}
+                  {selectedEmployee && (
+                    <div style={{
+                      marginTop: "8px",
+                      padding: "10px 12px",
+                      background: "#0a160a",
+                      border: "1px solid #1a3a1a",
+                      borderRadius: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: "500", color: "#5a9a5a" }}>
+                          👨 {selectedEmployee.name}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#666", marginTop: "2px" }}>
+                          {selectedEmployee.role}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedEmployee(null);
+                          setSearchQuery("");
+                          setStaffPin("");
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#666",
+                          cursor: "pointer",
+                          fontSize: "16px",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* PIN Input */}
+                {selectedEmployee && (
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ ...S.lbl, marginBottom: "6px", display: "block" }}>
+                      Enter PIN
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="4-digit PIN"
+                      value={staffPin}
+                      onChange={(e) => {
+                        setStaffPin(e.target.value);
+                        setStaffPinErr("");
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && doStaffLogin()}
+                      style={{
+                        ...S.inp,
+                        width: "100%",
+                        boxSizing: "border-box",
+                        fontSize: "16px",
+                        letterSpacing: "2px",
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Login Button */}
+                {selectedEmployee && (
+                  <button
+                    onClick={doStaffLogin}
+                    style={{
+                      ...S.btn,
+                      width: "100%",
+                      background: "#0a160a",
+                      border: "1px solid #1a3a1a",
+                      color: "#5a9a5a",
+                    }}
+                  >
+                    🔓 Login
+                  </button>
+                )}
+
+                {!selectedEmployee && (
+                  <div style={{
+                    textAlign: "center",
+                    fontSize: "12px",
+                    color: "#666",
+                    padding: "20px",
+                  }}>
+                    Search and select your name above
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </>
+    )}
+  </div>
+);
+
+// Then in your return statement, replace the login div with:
+// {!me ? loginJSX : (/* rest of your app */)}
+
 
   const fullName=me.isAdmin?"Satya (Admin)":`${me.firstName} ${me.lastName}`;
   const sorted={
