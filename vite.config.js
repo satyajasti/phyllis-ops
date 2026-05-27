@@ -26,7 +26,7 @@ function localApiPlugin() {
                 res.end(JSON.stringify(data));
               };
 
-              const mod = await import(`./api/${route}.js?dev=${Date.now()}`);
+              const mod = await import(new URL(`./api/${route}.js?dev=${Date.now()}`, import.meta.url).href);
               await mod.default(req, res);
             } catch (error) {
               res.statusCode = 500;

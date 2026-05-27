@@ -244,6 +244,7 @@ export default function PhyllisOps(){
 
   // ─── Load master data on mount ───
   useEffect(()=>{
+    if(!me) return;
     (async()=>{
       try{
         const [emps,recs,rIngs,ingCosts]=await Promise.all([
@@ -262,19 +263,27 @@ export default function PhyllisOps(){
       }catch(e){console.error("Load error",e);}
       setLoading(false);
     })();
-  },[]);
+  },[me]);
 
   useEffect(()=>{
     if(me||employees.length>0) return;
+    let cancelled=false;
     (async()=>{
       setLoginEmployeesLoading(true);
       try{
-        const r=await fetch("/api/employees");
+        const controller=new AbortController();
+        const timeout=setTimeout(()=>controller.abort(),6000);
+        const r=await fetch("/api/employees",{signal:controller.signal});
+        clearTimeout(timeout);
         const d=await r.json();
-        if(d.success&&Array.isArray(d.employees)) setEmps(d.employees);
-      }catch(e){console.error("Employee login load error",e);}
-      setLoginEmployeesLoading(false);
+        if(!cancelled&&d.success&&Array.isArray(d.employees)) setEmps(d.employees);
+      }catch(e){
+        console.error("Employee login load error",e);
+        if(!cancelled) setStaffErr("Could not load employees. Restart the local server or try the deployed app.");
+      }
+      if(!cancelled) setLoginEmployeesLoading(false);
     })();
+    return()=>{cancelled=true;};
   },[me,employees.length]);
 
   // ─── Load daily data when date changes ───
