@@ -12,9 +12,7 @@ function localApiPlugin() {
           const supported = new Set(['auth', 'employees', 'zoho', 'roles', 'shifts', 'price-check']);
           if (!supported.has(route)) return next();
 
-          let body = '';
-          req.on('data', chunk => { body += chunk; });
-          req.on('end', async () => {
+          const runHandler = async (body = '') => {
             try {
               req.query = Object.fromEntries(requestUrl.searchParams.entries());
               req.body = body ? JSON.parse(body) : {};
@@ -35,7 +33,16 @@ function localApiPlugin() {
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ error: error.message }));
             }
-          });
+          };
+
+          if (req.method === 'GET' || req.method === 'OPTIONS') {
+            await runHandler();
+            return;
+          }
+
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => { runHandler(body); });
         } catch {
           next();
         }
