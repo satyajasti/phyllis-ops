@@ -9,7 +9,7 @@ function localApiPlugin() {
         try {
           const requestUrl = new URL(req.url || '/', 'http://localhost');
           const route = requestUrl.pathname.replace(/^\/+/, '');
-          const supported = new Set(['auth', 'employees', 'zoho', 'roles', 'shifts', 'price-check']);
+          const supported = new Set(['auth', 'employees', 'zoho', 'roles', 'price-check']);
           if (!supported.has(route)) return next();
 
           const runHandler = async (body = '') => {

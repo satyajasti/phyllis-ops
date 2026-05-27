@@ -15,18 +15,6 @@ const SCOPES = [
   "ZohoCreator.report.READ",
   "ZohoCreator.report.UPDATE",
   "ZohoCreator.report.DELETE",
-  "ZohoShifts.schedules.READ",
-  "ZohoShifts.schedules.CREATE",
-  "ZohoShifts.schedules.UPDATE",
-  "ZohoShifts.schedules.DELETE",
-  "ZohoShifts.timesheets.READ",
-  "ZohoShifts.timesheets.CREATE",
-  "ZohoShifts.timesheets.UPDATE",
-  "ZohoShifts.timeoff.READ",
-  "ZohoShifts.timeoff.CREATE",
-  "ZohoShifts.timeoff.UPDATE",
-  "ZohoShifts.employees.READ",
-  "ZohoShifts.settings.READ",
   "openid",
   "email",
   "profile",
@@ -37,10 +25,6 @@ const DEFAULT_STAFF_MODULES = [
   "PAR Entry",
   "Sales Entry",
   "Staff Hours",
-  "My Schedule",
-  "Clock In/Out",
-  "My Timesheet",
-  "Time Off",
   "Temp Log",
   "Checklists",
   "Waste Log",
@@ -83,7 +67,6 @@ function normalizeEmployee(emp) {
     isAdmin: false,
     allowedModules: allowedModules.length ? allowedModules : DEFAULT_STAFF_MODULES,
     roleTemplate: firstValue(emp, ["Role_Template", "role_template"]),
-    shiftsEmployeeId: firstValue(emp, ["Shifts_Employee_ID", "shifts_employee_id"], null),
   };
 }
 
@@ -186,7 +169,6 @@ export default async function handler(req, res) {
             designation: "Owner",
             isAdmin: true,
             allowedModules: ["ALL"],
-            shiftsEmployeeId: null,
           },
           accessToken: userAccessToken,
         });
@@ -227,7 +209,6 @@ export default async function handler(req, res) {
           isAdmin: false,
           allowedModules,
           roleTemplate: emp.Role_Template || emp.role_template || "",
-          shiftsEmployeeId: emp.Shifts_Employee_ID || emp.shifts_employee_id || null,
         },
         accessToken: userAccessToken,
       });
@@ -255,7 +236,6 @@ export default async function handler(req, res) {
           designation: "Owner",
           isAdmin: true,
           allowedModules: ["ALL"],
-          shiftsEmployeeId: null,
         },
       });
     }
