@@ -38,6 +38,19 @@ function firstValue(record, keys, fallback = "") {
   return fallback;
 }
 
+function stringValue(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object") {
+    return String(
+      value.display_value ??
+      value.value ??
+      value.name ??
+      ""
+    ).trim();
+  }
+  return String(value).trim();
+}
+
 function parseModules(value) {
   if (Array.isArray(value)) return value.map(String).map(m => m.trim()).filter(Boolean);
   if (typeof value === "string") return value.split(",").map(m => m.trim()).filter(Boolean);
@@ -71,7 +84,29 @@ function normalizeEmployee(emp) {
 }
 
 function employeePin(emp) {
-  return String(firstValue(emp, ["PIN", "Pin", "pin", "pinin", "Pinin"])).trim();
+  const direct = firstValue(emp, [
+    "PIN",
+    "Pin",
+    "pin",
+    "pinin",
+    "Pinin",
+    "PININ",
+    "Login_PIN",
+    "Login_Pin",
+    "Staff_PIN",
+    "Staff_Pin",
+    "Pin_Number",
+    "Password",
+    "password",
+  ]);
+  if (direct !== "") return stringValue(direct);
+
+  const dynamic = Object.entries(emp || {}).find(([key, value]) => {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return value !== undefined && value !== null && value !== "" &&
+      (normalizedKey.includes("pin") || normalizedKey.includes("password"));
+  });
+  return dynamic ? stringValue(dynamic[1]) : "";
 }
 
 function isEmployeeActive(emp) {
@@ -264,7 +299,15 @@ export default async function handler(req, res) {
         });
       }
 
-      if (employeePin(emp) !== String(pin).trim()) {
+      const storedPin = employeePin(emp);
+      if (!storedPin) {
+        return res.status(400).json({
+          error: "pin_not_configured",
+          message: "PIN is not set for this employee. Ask a manager to add a PIN in Zoho Creator.",
+        });
+      }
+
+      if (storedPin !== String(pin).trim()) {
         return res.status(401).json({
           error: "invalid_pin",
           message: "Invalid PIN. Please check and try again.",
