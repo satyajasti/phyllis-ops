@@ -537,6 +537,11 @@ export default function PhyllisOps(){
   const allowed=isAdmin?["ALL"]:(me?.allowedModules||DEFAULT_STAFF_MODULES);
   const canSee=(mod)=>allowed.includes("ALL")||allowed.includes(mod);
   const TABS=TAB_ORDER.filter(t=>canSee(t));
+  const activeTab=TABS.includes(tab)?tab:(TABS[0]||"Dashboard");
+
+  useEffect(()=>{
+    if(me&&TABS.length&&!TABS.includes(tab)) setTab(TABS[0]);
+  },[me,tab,TABS]);
 
   const S={
     page:{minHeight:"100vh",background:"#0c0b09",color:"#d4c9b8",fontFamily:"'Trebuchet MS',sans-serif"},
@@ -687,8 +692,8 @@ export default function PhyllisOps(){
         {TABS.map(t=>(
           <button key={t} onClick={()=>setTab(t)} style={{
             background:"none",border:"none",
-            borderBottom:tab===t?"2px solid #c8a96e":"2px solid transparent",
-            color:tab===t?"#c8a96e":"#555",padding:"11px 14px",fontSize:"11px",
+            borderBottom:activeTab===t?"2px solid #c8a96e":"2px solid transparent",
+            color:activeTab===t?"#c8a96e":"#555",padding:"11px 14px",fontSize:"11px",
             letterSpacing:"1.5px",cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase"}}>
             {t}
           </button>
@@ -698,7 +703,7 @@ export default function PhyllisOps(){
       <div style={{padding:"20px",maxWidth:"1100px",margin:"0 auto"}}>
 
         {/* ══ DASHBOARD ══ */}
-        {tab==="Dashboard"&&(
+        {activeTab==="Dashboard"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"16px"}}>Summary — {date}</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:"12px",marginBottom:"20px"}}>
@@ -747,7 +752,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ PAR ENTRY ══ */}
-        {tab==="PAR Entry"&&(
+        {activeTab==="PAR Entry"&&(
           <div>
             <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"18px",flexWrap:"wrap"}}>
               <span style={S.lbl}>Completed by:</span>
@@ -794,7 +799,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ INGREDIENT COSTS ══ */}
-        {tab==="Ingredient Costs"&&isAdmin&&(
+        {activeTab==="Ingredient Costs"&&isAdmin&&(
           <div>
             <div style={{background:"#080f08",border:"1px solid #1a3a1a",borderRadius:"2px",padding:"10px 14px",marginBottom:"18px",fontSize:"12px",color:"#5a9a5a",lineHeight:"1.6"}}>
               💡 Costs save to Zoho automatically as you type. Click 🔍 to compare supplier prices.
@@ -848,7 +853,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ RECIPES ══ */}
-        {tab==="Recipes"&&isAdmin&&(
+        {activeTab==="Recipes"&&isAdmin&&(
           <div>
             <div style={{...S.lbl,marginBottom:"16px"}}>Menu items saved in Zoho Creator</div>
             <div style={{...S.card,padding:"14px 16px",marginBottom:"18px",display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap"}}>
@@ -927,7 +932,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ SALES ENTRY ══ */}
-        {tab==="Sales Entry"&&(
+        {activeTab==="Sales Entry"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"16px"}}>Enter units sold — {date}</div>
             <div style={{...S.card,overflow:"hidden",marginBottom:"14px"}}>
@@ -975,7 +980,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ STAFF HOURS ══ */}
-        {tab==="Staff Hours"&&(
+        {activeTab==="Staff Hours"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"8px"}}>Log hours worked — {date}</div>
             <div style={{fontSize:"12px",color:"#555",marginBottom:"16px"}}>Hours save to Zoho Creator. Labor cost auto-calculates from hourly rate.</div>
@@ -1032,7 +1037,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ ANALYTICS ══ */}
-        {tab==="Analytics"&&(
+        {activeTab==="Analytics"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"8px"}}>Item Performance — {date}</div>
             <div style={{display:"flex",gap:"6px",marginBottom:"20px",flexWrap:"wrap"}}>
@@ -1107,7 +1112,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ COGS REPORT ══ */}
-        {tab==="COGS Report"&&isAdmin&&(
+        {activeTab==="COGS Report"&&isAdmin&&(
           <div>
             <div style={{...S.lbl,marginBottom:"20px"}}>Full P&L — {date} — Live from Zoho</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:"14px",marginBottom:"22px"}}>
@@ -1189,7 +1194,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ EMPLOYEES ══ */}
-        {tab==="Employees"&&isAdmin&&(
+        {activeTab==="Employees"&&isAdmin&&(
           <div>
             <div style={{...S.lbl,marginBottom:"20px"}}>Staff Directory — Stored in Zoho Creator</div>
             <div style={{...S.card,padding:"20px",marginBottom:"24px"}}>
@@ -1281,37 +1286,37 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ ROLE TEMPLATES ══ */}
-        {tab==="Role Templates"&&isAdmin&&(
+        {activeTab==="Role Templates"&&isAdmin&&(
           <RoleTemplates S={S} showFlash={showFlash} employees={employees} setEmps={setEmps}/>
         )}
 
         {/* ══ TEMP LOG ══ */}
-        {(tab==="Temp Log")&&(
+        {(activeTab==="Temp Log")&&(
           <TempLog date={date} me={me} zoho={zoho} showFlash={showFlash} S={S}/>
         )}
 
         {/* ══ CHECKLISTS ══ */}
-        {(tab==="Checklists")&&(
+        {(activeTab==="Checklists")&&(
           <Checklists date={date} me={me} zoho={zoho} showFlash={showFlash} S={S}/>
         )}
 
         {/* ══ WASTE LOG ══ */}
-        {(tab==="Waste Log")&&(
+        {(activeTab==="Waste Log")&&(
           <WasteLog date={date} me={me} zoho={zoho} showFlash={showFlash} S={S} recipes={recipesWithIngs}/>
         )}
 
         {/* ══ SOPs ══ */}
-        {(tab==="SOPs")&&isAdmin&&(
+        {(activeTab==="SOPs")&&isAdmin&&(
           <SOPs S={S} showFlash={showFlash}/>
         )}
 
         {/* ══ RECEIPTS ══ */}
-        {(tab==="Receipts")&&isAdmin&&(
+        {(activeTab==="Receipts")&&isAdmin&&(
           <Receipts S={S} showFlash={showFlash} zoho={zoho}/>
         )}
 
         {/* ══ EXPORT ══ */}
-        {(tab==="Export")&&isAdmin&&(
+        {(activeTab==="Export")&&isAdmin&&(
           <ExportPanel
             S={S} date={date}
             M={M} employees={employees}
