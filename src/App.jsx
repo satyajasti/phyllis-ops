@@ -3,11 +3,11 @@ import { useState, useEffect, useCallback } from "react";
 // ─── All available modules ───
 const ALL_MODULES = [
   "Dashboard","PAR Entry","Ingredient Costs","Recipes","Sales Entry",
-  "Staff Hours","Analytics","COGS Report","Employees","Role Templates",
+  "Staff Hours","Kitchen Order List","Analytics","COGS Report","Employees","Role Templates",
   "Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"
 ];
 const DEFAULT_STAFF_MODULES = [
-  "Dashboard","PAR Entry","Sales Entry","Staff Hours",
+  "Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List",
   "Temp Log","Checklists","Waste Log"
 ];
 
@@ -560,7 +560,7 @@ export default function PhyllisOps(){
   };
 
   // Dynamic tabs based on allowed modules
-  const TAB_ORDER=["Dashboard","PAR Entry","Sales Entry","Staff Hours","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
+  const TAB_ORDER=["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
   const allowed=isAdmin?["ALL"]:(me?.allowedModules||DEFAULT_STAFF_MODULES);
   const canSee=(mod)=>allowed.includes("ALL")||allowed.includes(mod);
   const TABS=TAB_ORDER.filter(t=>canSee(t));
@@ -1062,6 +1062,11 @@ export default function PhyllisOps(){
               </>
             )}
           </div>
+        )}
+
+        {/* ══ KITCHEN ORDER LIST ══ */}
+        {activeTab==="Kitchen Order List"&&(
+          <KitchenOrderList S={S} me={me} zoho={zoho} showFlash={showFlash}/>
         )}
 
         {/* ══ ANALYTICS ══ */}
@@ -1675,6 +1680,245 @@ function WasteLog({date,me,zoho,showFlash,S,recipes}){
 }
 
 // ══════════════════════════════════════
+// KITCHEN ORDER LIST COMPONENT
+// ══════════════════════════════════════
+function KitchenOrderList({ S, me, zoho, showFlash }) {
+  const today = new Date().toISOString().split("T")[0];
+  const blankRow = { item: "", qty: "", unit: "lb", needed_by: today, notes: "" };
+  const [rows, setRows] = useState([
+    { item: "Chicken Breast", qty: "1", unit: "lb", needed_by: today, notes: "Prep for brunch" },
+    { item: "Eggs", qty: "2", unit: "case", needed_by: today, notes: "Low stock" },
+    { item: "Heavy Cream", qty: "3", unit: "qt", needed_by: today, notes: "Sauce prep" },
+  ]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [picker, setPicker] = useState(null);
+  const [priceLoading, setPriceLoading] = useState(false);
+
+  const requester = me?.isAdmin ? "Satya" : `${me?.firstName || ""} ${me?.lastName || ""}`.trim() || "Staff";
+  const units = ["lb", "case", "qt", "gal", "bag", "box", "each", "pack"];
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await zoho("getAll", "Kitchen_Orders");
+        setOrders(asArray(data));
+      } catch (e) {
+        console.error("Kitchen orders load error", e);
+        showFlash("Kitchen Orders form/report not found in Zoho yet");
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const submitOrders = async () => {
+    const valid = rows.filter(r => r.item.trim() && Number(r.qty) > 0 && r.unit.trim());
+    if (!valid.length) {
+      showFlash("Add at least one item and quantity");
+      return;
+    }
+    setSaving(true);
+    try {
+      const created = [];
+      for (const row of valid) {
+        const data = {
+          requested_by: requester,
+          item: row.item.trim(),
+          qty: Number(row.qty),
+          unit: row.unit.trim(),
+          needed_by: row.needed_by || today,
+          notes: row.notes.trim(),
+          status: "Requested",
+        };
+        const res = await zoho("create", "Kitchen_Orders", { data });
+        created.push({ ...data, ID: res.data?.ID || `${Date.now()}-${created.length}` });
+      }
+      setOrders(p => [...created, ...p]);
+      setRows([{ ...blankRow }]);
+      showFlash("Kitchen order submitted ✓");
+    } catch (e) {
+      console.error("Kitchen order save error", e);
+      showFlash("Save error — add Kitchen_Orders form/report to Zoho");
+    }
+    setSaving(false);
+  };
+
+  const openRates = async (order) => {
+    setPicker({ order, suppliers: [], error: "" });
+    setPriceLoading(true);
+    try {
+      const res = await fetch("/api/price-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ingredient: order.item, unit: order.unit, yourCost: 0 }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setPicker({ order, suppliers: asArray(data.suppliers), error: "" });
+    } catch (e) {
+      setPicker({ order, suppliers: [], error: e.message || "Could not estimate rates" });
+    }
+    setPriceLoading(false);
+  };
+
+  const selectSupplier = async (supplier) => {
+    const order = picker.order;
+    const rate = supplier.price > 0 ? `$${Number(supplier.price).toFixed(2)}/${order.unit}` : "Call";
+    const updated = { ...order, recommendation: supplier.name, rate };
+    setOrders(p => p.map(o => (o.ID || o.id) === (order.ID || order.id) ? updated : o));
+    setPicker(null);
+    try {
+      await zoho("update", "Kitchen_Orders", {
+        recordId: order.ID || order.id,
+        data: { recommendation: supplier.name, rate, status: "Priced" },
+      });
+      showFlash("Store and rate saved ✓");
+    } catch (e) {
+      showFlash("Rate selected locally — Zoho save failed");
+    }
+  };
+
+  const storeSummary = orders.reduce((acc, o) => {
+    if (!o.recommendation) return acc;
+    acc[o.recommendation] = (acc[o.recommendation] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      <div style={{ ...S.lbl, marginBottom: "16px" }}>Kitchen Order List</div>
+
+      <div style={{ ...S.card, padding: "18px", marginBottom: "22px" }}>
+        <div style={{ ...S.lbl, ...S.amber, marginBottom: "12px" }}>Chef Entry</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "760px" }}>
+            <thead>
+              <tr>{["Item", "Qty", "Unit", "Needed By", "Notes", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <tr key={idx} style={{ borderTop: idx ? "1px solid #1a1916" : "none" }}>
+                  <td style={S.td}>
+                    <input value={row.item} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, item: e.target.value } : r))}
+                      placeholder="Chicken Breast" style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
+                  </td>
+                  <td style={S.td}>
+                    <input type="number" min="0" step="0.01" value={row.qty} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, qty: e.target.value } : r))}
+                      style={{ ...S.inp, width: "80px", color: "#c8a96e" }} />
+                  </td>
+                  <td style={S.td}>
+                    <select value={row.unit} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, unit: e.target.value } : r))}
+                      style={{ ...S.inp, width: "95px" }}>
+                      {units.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </td>
+                  <td style={S.td}>
+                    <input type="date" value={row.needed_by} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, needed_by: e.target.value } : r))}
+                      style={{ ...S.inp, width: "140px" }} />
+                  </td>
+                  <td style={S.td}>
+                    <input value={row.notes} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, notes: e.target.value } : r))}
+                      placeholder="Prep for brunch" style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
+                  </td>
+                  <td style={S.td}>
+                    <button onClick={() => setRows(p => p.length === 1 ? [{ ...blankRow }] : p.filter((_, i) => i !== idx))}
+                      style={S.btnDanger}>Remove</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
+          <button onClick={() => setRows(p => [...p, { ...blankRow }])} style={S.btnSm}>+ Add Item</button>
+          <button onClick={submitOrders} disabled={saving} style={S.btn}>{saving ? "Submitting..." : "Submit Order"}</button>
+        </div>
+      </div>
+
+      {Object.keys(storeSummary).length > 0 && (
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+          {Object.entries(storeSummary).map(([store, count]) => (
+            <span key={store} style={{ background: "#0a160a", border: "1px solid #1a3a1a", color: "#7eb87e", padding: "6px 10px", fontSize: "12px" }}>
+              {store}: {count} item{count === 1 ? "" : "s"}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ ...S.card, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>{["Requested By", "Item", "Qty", "Unit", "Recommendation", "Rate"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} style={{ ...S.td, color: "#555" }}>Loading kitchen orders...</td></tr>
+            ) : orders.length === 0 ? (
+              <tr><td colSpan={6} style={{ ...S.td, color: "#555" }}>No kitchen orders yet.</td></tr>
+            ) : orders.map((order, idx) => (
+              <tr key={order.ID || idx} style={{ borderTop: idx ? "1px solid #1a1916" : "none" }}>
+                <td style={S.td}>{order.requested_by || "Staff"}</td>
+                <td style={{ ...S.td, color: "#e8dfc8", fontWeight: "600" }}>{order.item}</td>
+                <td style={{ ...S.td, ...S.amber }}>{order.qty}</td>
+                <td style={S.td}>{order.unit}</td>
+                <td style={S.td}>
+                  <button onClick={() => openRates(order)} style={{ ...S.btnSm, background: order.recommendation ? "#0e1e0e" : "#1e2820" }}>
+                    {order.recommendation || "Select store"}
+                  </button>
+                </td>
+                <td style={{ ...S.td, color: order.rate ? "#7eb87e" : "#555", fontWeight: order.rate ? "700" : "400" }}>
+                  {order.rate || "Rate from selected store"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {picker && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, padding: "20px" }}>
+          <div style={{ ...S.card, width: "560px", maxWidth: "100%", padding: "18px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "14px" }}>
+              <div>
+                <div style={{ ...S.lbl, ...S.amber, marginBottom: "5px" }}>Smart Store Rates</div>
+                <div style={{ fontSize: "15px", color: "#e8dfc8", fontWeight: "700" }}>
+                  {picker.order.item} · {picker.order.qty} {picker.order.unit}
+                </div>
+              </div>
+              <button onClick={() => setPicker(null)} style={S.btnDanger}>Close</button>
+            </div>
+            {priceLoading ? (
+              <div style={{ color: "#555", padding: "22px" }}>Checking estimated store rates...</div>
+            ) : picker.error ? (
+              <div style={{ color: "#c07070", padding: "12px", background: "#1a0a0a", border: "1px solid #3a1e1e" }}>{picker.error}</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>{["Store", "Rate", "Est. Total", "Note"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {picker.suppliers.map((s, idx) => {
+                    const price = Number(s.price || 0);
+                    return (
+                      <tr key={s.name || idx} onClick={() => selectSupplier(s)}
+                        style={{ borderTop: idx ? "1px solid #1a1916" : "none", cursor: "pointer", background: s.recommended ? "#0e1e0e" : "transparent" }}>
+                        <td style={{ ...S.td, color: s.recommended ? "#a0d4a0" : "#d4c9b8", fontWeight: "700" }}>{s.name}</td>
+                        <td style={{ ...S.td, ...S.amber }}>{price > 0 ? `$${price.toFixed(2)}/${picker.order.unit}` : "Call"}</td>
+                        <td style={{ ...S.td, color: "#7eb87e" }}>{price > 0 ? `$${(price * Number(picker.order.qty || 0)).toFixed(2)}` : "Call"}</td>
+                        <td style={{ ...S.td, color: "#666", fontSize: "12px" }}>{s.recommended ? "Best price. " : ""}{s.note}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════
 // SOPs COMPONENT
 // ══════════════════════════════════════
 function SOPs({S,showFlash}){
@@ -2056,7 +2300,7 @@ function RoleTemplates({ S, showFlash, employees, setEmps }) {
 
   const ALL_MODS = [
     "Dashboard","PAR Entry","Ingredient Costs","Recipes","Sales Entry",
-    "Staff Hours","Analytics","COGS Report","Employees","Role Templates",
+    "Staff Hours","Kitchen Order List","Analytics","COGS Report","Employees","Role Templates",
     "Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"
   ];
 

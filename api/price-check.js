@@ -2,12 +2,12 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   const { ingredient, unit, yourCost } = req.body;
-  const prompt = `You are a restaurant supply pricing expert for Atlanta/Marietta GA (Cobb County, 2025).
+  const prompt = `You are a restaurant supply pricing expert for Atlanta/Marietta GA (Cobb County, 2026).
 Phyllis Brunch at 732 Cherokee St NE, Marietta GA 30060 buys:
 - Item: ${ingredient}
 - Purchase unit: ${unit}
 - Current price: ${yourCost > 0 ? "$" + parseFloat(yourCost).toFixed(2) : "not entered"}
-Provide 2025 wholesale price estimates from: Restaurant Depot (1803 Roswell Rd Marietta), Costco Business Center, Sam's Club, Gordon Food Service, Sysco Atlanta.
+Provide 2026 wholesale price estimates from: Restaurant Depot (1803 Roswell Rd Marietta), Costco Business Center, Sam's Club, Gordon Food Service, Sysco Atlanta.
 Return ONLY valid JSON:
 {"suppliers":[{"name":"Restaurant Depot","price":0.00,"note":"brief note","recommended":false},{"name":"Costco Business Center","price":0.00,"note":"brief note","recommended":false},{"name":"Sam's Club","price":0.00,"note":"brief note","recommended":false},{"name":"Gordon Food Service","price":0.00,"note":"brief note","recommended":false},{"name":"Sysco Atlanta","price":0.00,"note":"brief note","recommended":false}],"tip":"one actionable tip"}
 Set recommended:true for best value. Use 0 if unknown.`;

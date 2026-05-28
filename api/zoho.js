@@ -21,6 +21,7 @@ const REPORTS = {
   PAR_Entries:        "PAR_Entries_Report",
   Sales_Entries:      "Sales_Entries_Report",
   Labor_Entries:      "Labor_Entries_Report",
+  Kitchen_Orders:     "All_Kitchen_Orders",
 };
 
 // ── Exact Zoho Creator form names ──
@@ -32,6 +33,7 @@ const FORMS = {
   PAR_Entries:        "PAR_Entries",
   Sales_Entries:      "Sales_Entries",
   Labor_Entries:      "Labor_Entries",
+  Kitchen_Orders:     "Kitchen_Orders",
 };
 
 // ── Field name mappings from app → Zoho ──
@@ -84,6 +86,17 @@ const FIELD_MAPS = {
     Designation: d.designation || "",
     Hours_Worked: d.hours_worked || 0,
     Hourly_Rate: d.hourly_rate || 0,
+  }),
+  Kitchen_Orders: (d) => ({
+    Requested_By: d.requested_by || "",
+    Item: d.item || "",
+    Qty: d.qty || 0,
+    Unit: d.unit || "",
+    Needed_By: toZohoDate(d.needed_by || ""),
+    Notes: d.notes || "",
+    Recommendation: d.recommendation || "",
+    Rate: d.rate || "",
+    Status: d.status || "Requested",
   }),
 };
 
@@ -166,6 +179,20 @@ function normalize(form, records) {
         hours_worked: parseFloat(r.Hours_Worked || 0),
         hourly_rate: parseFloat(r.Hourly_Rate || 0),
         designation: r.Designation || "",
+      };
+    }
+    if (form === "Kitchen_Orders") {
+      return {
+        ID: r.ID,
+        requested_by: r.Requested_By || "",
+        item: r.Item || "",
+        qty: parseFloat(r.Qty || 0),
+        unit: r.Unit || "",
+        needed_by: r.Needed_By || "",
+        notes: r.Notes || "",
+        recommendation: r.Recommendation || "",
+        rate: r.Rate || "",
+        status: r.Status || "Requested",
       };
     }
     return r;
