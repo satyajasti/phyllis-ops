@@ -3,6 +3,9 @@
 
 import { getZohoToken, ZOHO_BASE } from "./zoho-token.js";
 
+let cachedEmployees = null;
+let cachedEmployeesAt = 0;
+
 function firstValue(record, keys, fallback = "") {
   for (const key of keys) {
     const value = record?.[key];
@@ -40,6 +43,10 @@ export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
   try {
+    if (cachedEmployees && Date.now() - cachedEmployeesAt < 2 * 60 * 1000) {
+      return res.status(200).json({ success: true, employees: cachedEmployees });
+    }
+
     const token = await getZohoToken();
     const response = await fetch(`${ZOHO_BASE}/report/All_Employees?max_records=500`, {
       headers: { Authorization: `Zoho-oauthtoken ${token}` },
@@ -66,6 +73,9 @@ export default async function handler(req, res) {
         is_active: true,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
+
+    cachedEmployees = employees;
+    cachedEmployeesAt = Date.now();
 
     return res.status(200).json({ success: true, employees });
   } catch (e) {

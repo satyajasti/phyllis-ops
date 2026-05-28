@@ -30,6 +30,9 @@ const DEFAULT_STAFF_MODULES = [
   "Waste Log",
 ];
 
+let cachedEmployeeRecords = null;
+let cachedEmployeeRecordsAt = 0;
+
 function firstValue(record, keys, fallback = "") {
   for (const key of keys) {
     const value = record?.[key];
@@ -114,6 +117,24 @@ function isEmployeeActive(emp) {
   if (typeof raw === "boolean") return raw;
   const value = String(raw).trim().toLowerCase();
   return !["false", "no", "inactive", "disabled", "0"].includes(value);
+}
+
+async function getEmployeeRecords() {
+  if (cachedEmployeeRecords && Date.now() - cachedEmployeeRecordsAt < 2 * 60 * 1000) {
+    return cachedEmployeeRecords;
+  }
+
+  const creatorToken = await getZohoToken();
+  const empRes = await fetch(`${ZOHO_BASE}/report/All_Employees?max_records=200`, {
+    headers: { Authorization: `Zoho-oauthtoken ${creatorToken}` },
+  });
+  const empData = await empRes.json();
+  if (!empRes.ok || (empData.code && String(empData.code) !== "3000")) {
+    throw new Error(empData.description || empData.message || "Could not load employees from Zoho Creator.");
+  }
+  cachedEmployeeRecords = empData.data || [];
+  cachedEmployeeRecordsAt = Date.now();
+  return cachedEmployeeRecords;
 }
 
 export default async function handler(req, res) {
@@ -278,12 +299,7 @@ export default async function handler(req, res) {
     if (!employeeId) return res.status(400).json({ error: "Missing employee" });
 
     try {
-      const creatorToken = await getZohoToken();
-      const empRes = await fetch(`${ZOHO_BASE}/report/All_Employees?max_records=200`, {
-        headers: { Authorization: `Zoho-oauthtoken ${creatorToken}` },
-      });
-      const empData = await empRes.json();
-      const emp = (empData.data || []).find(record => String(record.ID) === String(employeeId));
+      const emp = (await getEmployeeRecords()).find(record => String(record.ID) === String(employeeId));
 
       if (!emp) {
         return res.status(404).json({

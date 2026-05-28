@@ -16,6 +16,7 @@ const REPORTS = {
   Employees:          "All_Employees",
   Recipes:            "All_Recipes",
   Ingredients:        "All_Ingredients",
+  Ingredients_Report: "All_Ingredients",
   Recipe_Ingredients: "All_Recipe_Ingredients",
   PAR_Entries:        "PAR_Entries_Report",
   Sales_Entries:      "Sales_Entries_Report",
@@ -197,7 +198,13 @@ export default async function handler(req, res) {
         if (criteria) url += `&criteria=${encodeURIComponent(criteria)}`;
         const r = await fetch(url, { method: "GET", headers });
         const d = await r.json();
-        console.log("Zoho raw response for", reportName, ":", JSON.stringify(d).substring(0,500));
+        if (!r.ok || (d.code && String(d.code) !== "3000")) {
+          return res.status(502).json({
+            error: "zoho_get_failed",
+            message: d.description || d.message || "Could not load Zoho Creator data.",
+            details: d,
+          });
+        }
         const normalized = normalize(form, d.data || []);
         return res.status(200).json(normalized);
       }

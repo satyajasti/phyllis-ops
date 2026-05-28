@@ -18,8 +18,12 @@ const zoho = async (action, form, payload = {}) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, form, ...payload }),
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || data?.error) throw new Error(data?.message || data?.error || "Zoho request failed");
+  return data;
 };
+
+const asArray = value => Array.isArray(value) ? value : [];
 
 // ─── Static ingredients list ───
 const INGREDIENTS = [
@@ -186,6 +190,7 @@ export default function PhyllisOps(){
   const [laborData,setLaborData] = useState({});    // {emp_id: {hours, zohoId}}
 
   const [loading,setLoading] = useState(true);
+  const [loadErr,setLoadErr] = useState("");
   const [saving,setSaving]   = useState("");
   const [flash,setFlash]     = useState("");
   const [pricePanel,setPP]   = useState(null);
@@ -233,21 +238,25 @@ export default function PhyllisOps(){
   useEffect(()=>{
     if(!me) return;
     (async()=>{
+      setLoadErr("");
       try{
         const [emps,recs,rIngs,ingCosts]=await Promise.all([
           zoho("getAll","Employees"),
           zoho("getAll","Recipes"),
           zoho("getAll","Recipe_Ingredients"),
-          zoho("getAll","Ingredients_Report"),
+          zoho("getAll","Ingredients"),
         ]);
-        setEmps(emps||[]);
-        setRecipes(recs||[]);
-        setRecipeIngs(rIngs||[]);
+        setEmps(asArray(emps));
+        setRecipes(asArray(recs));
+        setRecipeIngs(asArray(rIngs));
         // Build cost map from Ingredients form
         const cm={};
-        (ingCosts||[]).forEach(r=>{ cm[r.ingredient_id||r.Ingredient_ID]=parseFloat(r.cost_per_unit||r.Cost_Per_Unit||0); });
+        asArray(ingCosts).forEach(r=>{ cm[r.ingredient_id||r.Ingredient_ID]=parseFloat(r.cost_per_unit||r.Cost_Per_Unit||0); });
         setCosts(cm);
-      }catch(e){console.error("Load error",e);}
+      }catch(e){
+        console.error("Load error",e);
+        setLoadErr(e.message||"Could not load Zoho data.");
+      }
       setLoading(false);
     })();
   },[me]);
@@ -256,6 +265,17 @@ export default function PhyllisOps(){
     if(me||employees.length>0) return;
     let cancelled=false;
     (async()=>{
+      const cachedAt=Number(sessionStorage.getItem("phyllis_employee_cache_at")||0);
+      const cached=sessionStorage.getItem("phyllis_employee_cache");
+      if(cached&&Date.now()-cachedAt<5*60*1000){
+        try{
+          const parsed=JSON.parse(cached);
+          if(Array.isArray(parsed)&&parsed.length){
+            setEmps(parsed);
+            return;
+          }
+        }catch{}
+      }
       setLoginEmployeesLoading(true);
       try{
         const controller=new AbortController();
@@ -263,7 +283,11 @@ export default function PhyllisOps(){
         const r=await fetch("/api/employees",{signal:controller.signal});
         clearTimeout(timeout);
         const d=await r.json();
-        if(!cancelled&&d.success&&Array.isArray(d.employees)) setEmps(d.employees);
+        if(!cancelled&&d.success&&Array.isArray(d.employees)){
+          setEmps(d.employees);
+          sessionStorage.setItem("phyllis_employee_cache",JSON.stringify(d.employees));
+          sessionStorage.setItem("phyllis_employee_cache_at",String(Date.now()));
+        }
         else if(!cancelled) setStaffErr(d.message||d.error||"Could not load employees from Zoho.");
       }catch(e){
         console.error("Employee login load error",e);
@@ -276,7 +300,7 @@ export default function PhyllisOps(){
 
   // ─── Load daily data when date changes ───
   useEffect(()=>{
-    if(!date) return;
+    if(!me||!date) return;
     (async()=>{
       try{
         const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -289,20 +313,23 @@ export default function PhyllisOps(){
         ]);
         // Build PAR map
         const pm={};
-        (pars||[]).forEach(r=>{pm[r.ingredient_id||r.Ingredient_ID]={on_hand:r.on_hand||r.On_Hand||"",order_qty:r.order_qty||r.Order_Quantity||"",zohoId:r.ID};});
+        asArray(pars).forEach(r=>{pm[r.ingredient_id||r.Ingredient_ID]={on_hand:r.on_hand||r.On_Hand||"",order_qty:r.order_qty||r.Order_Quantity||"",zohoId:r.ID};});
         setParData(pm);
-        setPS((pars||[])[0]?.completed_by||(pars||[])[0]?.Completed_By||"");
+        setPS(asArray(pars)[0]?.completed_by||asArray(pars)[0]?.Completed_By||"");
         // Build sales map
         const sm={};
-        (sales||[]).forEach(r=>{sm[r.recipe_id||r.Recipe_ID]={qty:r.qty_sold||r.Quantity_Sold||0,zohoId:r.ID};});
+        asArray(sales).forEach(r=>{sm[r.recipe_id||r.Recipe_ID]={qty:r.qty_sold||r.Quantity_Sold||0,zohoId:r.ID};});
         setSalesData(sm);
         // Build labor map
         const lm={};
-        (labor||[]).forEach(r=>{lm[r.employee_id||r.Employee_ID]={hours:r.hours_worked||r.Hours_Worked||0,zohoId:r.ID};});
+        asArray(labor).forEach(r=>{lm[r.employee_id||r.Employee_ID]={hours:r.hours_worked||r.Hours_Worked||0,zohoId:r.ID};});
         setLaborData(lm);
-      }catch(e){console.error("Daily load error",e);}
+      }catch(e){
+        console.error("Daily load error",e);
+        setLoadErr(e.message||"Could not load today's Zoho data.");
+      }
     })();
-  },[date]);
+  },[me,date]);
 
   // ─── Attach ingredients to recipes ───
   const recipesWithIngs = recipes.map(r=>{
@@ -539,10 +566,6 @@ export default function PhyllisOps(){
   const TABS=TAB_ORDER.filter(t=>canSee(t));
   const activeTab=TABS.includes(tab)?tab:(TABS[0]||"Dashboard");
 
-  useEffect(()=>{
-    if(me&&TABS.length&&!TABS.includes(tab)) setTab(TABS[0]);
-  },[me,tab,TABS]);
-
   const S={
     page:{minHeight:"100vh",background:"#0c0b09",color:"#d4c9b8",fontFamily:"'Trebuchet MS',sans-serif"},
     card:{background:"#141210",border:"1px solid #252220",borderRadius:"3px"},
@@ -670,7 +693,7 @@ export default function PhyllisOps(){
         <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
           {(flash||saving)&&<span style={{fontSize:"12px",...S.green}}>{saving||flash}</span>}
           <span style={{fontSize:"12px",color:"#888"}}>{fullName}</span>
-          <button onClick={()=>{setMe(null);setPin("");setSelEmp("");setPinErr("");sessionStorage.removeItem("phyllis_user");}}
+          <button onClick={()=>{setMe(null);setPin("");setSelEmp("");setPinErr("");setLoadErr("");sessionStorage.removeItem("phyllis_user");}}
             style={{background:"none",border:"1px solid #2e2b26",color:"#666",padding:"4px 10px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"}}>
             Sign Out
           </button>
@@ -701,6 +724,11 @@ export default function PhyllisOps(){
       </div>
 
       <div style={{padding:"20px",maxWidth:"1100px",margin:"0 auto"}}>
+        {loadErr&&(
+          <div style={{background:"#1a0a0a",border:"1px solid #3a1e1e",borderRadius:"3px",padding:"12px 14px",marginBottom:"18px",fontSize:"12px",color:"#c07070",lineHeight:"1.6"}}>
+            {loadErr}
+          </div>
+        )}
 
         {/* ══ DASHBOARD ══ */}
         {activeTab==="Dashboard"&&(
