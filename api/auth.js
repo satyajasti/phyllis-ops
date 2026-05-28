@@ -25,9 +25,19 @@ const DEFAULT_STAFF_MODULES = [
   "PAR Entry",
   "Sales Entry",
   "Staff Hours",
+  "Kitchen Order List",
   "Temp Log",
   "Checklists",
   "Waste Log",
+];
+
+const KITCHEN_ORDER_ROLES = [
+  "chef",
+  "cook",
+  "kitchen",
+  "prep",
+  "sous",
+  "expeditor",
 ];
 
 let cachedEmployeeRecords = null;
@@ -60,6 +70,15 @@ function parseModules(value) {
   return [];
 }
 
+function modulesForEmployee(modules, designation) {
+  const allowed = modules.length ? modules : DEFAULT_STAFF_MODULES;
+  const role = String(designation || "").toLowerCase();
+  if (KITCHEN_ORDER_ROLES.some(keyword => role.includes(keyword)) && !allowed.includes("Kitchen Order List")) {
+    return [...allowed, "Kitchen Order List"];
+  }
+  return allowed;
+}
+
 function normalizeEmployee(emp) {
   const name = emp.Name || "";
   const nameText = typeof name === "string" ? name : String(name.display_value || "").trim();
@@ -72,16 +91,17 @@ function normalizeEmployee(emp) {
     "Modules_Provided",
     "modules_provided",
   ]));
+  const designation = firstValue(emp, ["Designation", "designation", "Role_Name", "role_name"]);
 
   return {
     id: emp.ID,
     email: firstValue(emp, ["Email", "email"]),
     firstName,
     lastName,
-    designation: firstValue(emp, ["Designation", "designation", "Role_Name", "role_name"]),
+    designation,
     hourlyRate: parseFloat(firstValue(emp, ["Hourly_Rate", "hourly_rate", "salary"], 0)),
     isAdmin: false,
-    allowedModules: allowedModules.length ? allowedModules : DEFAULT_STAFF_MODULES,
+    allowedModules: modulesForEmployee(allowedModules, designation),
     roleTemplate: firstValue(emp, ["Role_Template", "role_template"]),
   };
 }
@@ -249,9 +269,13 @@ export default async function handler(req, res) {
       }
 
       const emp = records[0];
-      const allowedModules = emp.Allowed_Modules
-        ? emp.Allowed_Modules.split(",").map(m => m.trim()).filter(Boolean)
-        : ["Dashboard", "PAR Entry", "Sales Entry", "Staff Hours", "Temp Log", "Checklists", "Waste Log"];
+      const designation = emp.Designation || emp.designation || emp.Role_Name || emp.role_name || "";
+      const allowedModules = modulesForEmployee(
+        emp.Allowed_Modules
+          ? emp.Allowed_Modules.split(",").map(m => m.trim()).filter(Boolean)
+          : [],
+        designation
+      );
 
       return res.status(200).json({
         success: true,
@@ -260,7 +284,7 @@ export default async function handler(req, res) {
           email,
           firstName: emp.First_Name || emp.first_name || "",
           lastName:  emp.Last_Name  || emp.last_name  || "",
-          designation: emp.Designation || emp.designation || "",
+          designation,
           hourlyRate:  parseFloat(emp.Hourly_Rate || emp.hourly_rate || 0),
           isAdmin: false,
           allowedModules,
