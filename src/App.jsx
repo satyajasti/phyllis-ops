@@ -1706,7 +1706,7 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
         setOrders(asArray(data));
       } catch (e) {
         console.error("Kitchen orders load error", e);
-        showFlash("Kitchen Orders form/report not found in Zoho yet");
+        showFlash("Kitchen Order List form/report not found in Zoho yet");
       }
       setLoading(false);
     })();
@@ -1739,7 +1739,7 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
       showFlash("Kitchen order submitted ✓");
     } catch (e) {
       console.error("Kitchen order save error", e);
-      showFlash("Save error — add Kitchen_Orders form/report to Zoho");
+      showFlash("Save error — check Kitchen Order List fields in Zoho");
     }
     setSaving(false);
   };

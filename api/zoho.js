@@ -21,7 +21,8 @@ const REPORTS = {
   PAR_Entries:        "PAR_Entries_Report",
   Sales_Entries:      "Sales_Entries_Report",
   Labor_Entries:      "Labor_Entries_Report",
-  Kitchen_Orders:     "All_Kitchen_Orders",
+  Kitchen_Orders:     "Kitchen_Order_List_Report",
+  Kitchen_Order_List: "Kitchen_Order_List_Report",
 };
 
 // ── Exact Zoho Creator form names ──
@@ -33,7 +34,8 @@ const FORMS = {
   PAR_Entries:        "PAR_Entries",
   Sales_Entries:      "Sales_Entries",
   Labor_Entries:      "Labor_Entries",
-  Kitchen_Orders:     "Kitchen_Orders",
+  Kitchen_Orders:     "Kitchen_Order_List",
+  Kitchen_Order_List: "Kitchen_Order_List",
 };
 
 // ── Field name mappings from app → Zoho ──
@@ -88,7 +90,10 @@ const FIELD_MAPS = {
     Hourly_Rate: d.hourly_rate || 0,
   }),
   Kitchen_Orders: (d) => ({
-    Requested_By: d.requested_by || "",
+    Requested_By: {
+      first_name: String(d.requested_by || "").split(/\s+/)[0] || "",
+      last_name: String(d.requested_by || "").split(/\s+/).slice(1).join(" "),
+    },
     Item: d.item || "",
     Qty: d.qty || 0,
     Unit: d.unit || "",
@@ -98,6 +103,7 @@ const FIELD_MAPS = {
     Rate: d.rate || "",
     Status: d.status || "Requested",
   }),
+  Kitchen_Order_List: (d) => FIELD_MAPS.Kitchen_Orders(d),
 };
 
 // ── Normalize records from Zoho → app format ──
@@ -181,10 +187,13 @@ function normalize(form, records) {
         designation: r.Designation || "",
       };
     }
-    if (form === "Kitchen_Orders") {
+    if (form === "Kitchen_Orders" || form === "Kitchen_Order_List") {
+      const requestedBy = typeof r.Requested_By === "object"
+        ? String(r.Requested_By.display_value || `${r.Requested_By.first_name || ""} ${r.Requested_By.last_name || ""}`).trim()
+        : r.Requested_By || "";
       return {
         ID: r.ID,
-        requested_by: r.Requested_By || "",
+        requested_by: requestedBy,
         item: r.Item || "",
         qty: parseFloat(r.Qty || 0),
         unit: r.Unit || "",
