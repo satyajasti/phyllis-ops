@@ -62,6 +62,19 @@ const INGREDIENTS = [
   { id:"pr6", name:"Avocados",                   unit:"each",          category:"Produce",     par:"6/wk" },
 ];
 
+function orderUnitFromParUnit(unit = "") {
+  const raw = String(unit).trim().toLowerCase();
+  if (raw.startsWith("case")) return "case";
+  if (raw.startsWith("bag")) return "bag";
+  if (raw.startsWith("box")) return "box";
+  if (raw.startsWith("pack")) return "pack";
+  if (raw.startsWith("quart")) return "qt";
+  if (raw.startsWith("gallon")) return "gal";
+  if (raw.startsWith("each")) return "each";
+  if (raw.includes("lb")) return "lb";
+  return raw || "lb";
+}
+
 const CATS = ["Proteins","Dairy","Dry Storage","Produce"];
 const DESIGNATIONS = [
   "General Manager","Kitchen Manager","Line Cook","Prep Cook",
@@ -1686,8 +1699,8 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
   const today = new Date().toISOString().split("T")[0];
   const blankRow = { item: "", qty: "", unit: "lb", needed_by: today, notes: "" };
   const [rows, setRows] = useState([
-    { item: "Chicken Breast", qty: "1", unit: "lb", needed_by: today, notes: "Prep for brunch" },
-    { item: "Eggs", qty: "2", unit: "case", needed_by: today, notes: "Low stock" },
+    { item: "Chicken Breast", qty: "1", unit: "bag", needed_by: today, notes: "Prep for brunch" },
+    { item: "Eggs (large)", qty: "2", unit: "case", needed_by: today, notes: "Low stock" },
     { item: "Heavy Cream", qty: "3", unit: "qt", needed_by: today, notes: "Sauce prep" },
   ]);
   const [orders, setOrders] = useState([]);
@@ -1697,7 +1710,15 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
   const [priceLoading, setPriceLoading] = useState(false);
 
   const requester = me?.isAdmin ? "Satya" : `${me?.firstName || ""} ${me?.lastName || ""}`.trim() || "Staff";
-  const units = ["lb", "case", "qt", "gal", "bag", "box", "each", "pack"];
+  const units = ["lb", "case", "qt", "gal", "bag", "box", "each", "pack", "doz"];
+  const parItemNames = INGREDIENTS.map(ing => ing.name);
+  const applyItem = (idx, value) => {
+    const match = INGREDIENTS.find(ing => ing.name.toLowerCase() === value.trim().toLowerCase());
+    setRows(p => p.map((r, i) => i === idx
+      ? { ...r, item: value, unit: match ? orderUnitFromParUnit(match.unit) : r.unit }
+      : r
+    ));
+  };
 
   useEffect(() => {
     (async () => {
@@ -1800,8 +1821,8 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
               {rows.map((row, idx) => (
                 <tr key={idx} style={{ borderTop: idx ? "1px solid #1a1916" : "none" }}>
                   <td style={S.td}>
-                    <input value={row.item} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, item: e.target.value } : r))}
-                      placeholder="Chicken Breast" style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
+                    <input value={row.item} list="kitchen-order-par-items" onChange={e => applyItem(idx, e.target.value)}
+                      placeholder="Select PAR item" style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
                   </td>
                   <td style={S.td}>
                     <input type="number" min="0" step="0.01" value={row.qty} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, qty: e.target.value } : r))}
@@ -1829,6 +1850,9 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
               ))}
             </tbody>
           </table>
+          <datalist id="kitchen-order-par-items">
+            {parItemNames.map(name => <option key={name} value={name} />)}
+          </datalist>
         </div>
         <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
           <button onClick={() => setRows(p => [...p, { ...blankRow }])} style={S.btnSm}>+ Add Item</button>
