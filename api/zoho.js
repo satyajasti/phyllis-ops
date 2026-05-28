@@ -198,6 +198,9 @@ export default async function handler(req, res) {
         if (criteria) url += `&criteria=${encodeURIComponent(criteria)}`;
         const r = await fetch(url, { method: "GET", headers });
         const d = await r.json();
+        if (String(d.code) === "3100") {
+          return res.status(200).json([]);
+        }
         if (!r.ok || (d.code && String(d.code) !== "3000")) {
           return res.status(502).json({
             error: "zoho_get_failed",

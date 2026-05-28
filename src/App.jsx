@@ -827,7 +827,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ INGREDIENT COSTS ══ */}
-        {activeTab==="Ingredient Costs"&&isAdmin&&(
+        {activeTab==="Ingredient Costs"&&(
           <div>
             <div style={{background:"#080f08",border:"1px solid #1a3a1a",borderRadius:"2px",padding:"10px 14px",marginBottom:"18px",fontSize:"12px",color:"#5a9a5a",lineHeight:"1.6"}}>
               💡 Costs save to Zoho automatically as you type. Click 🔍 to compare supplier prices.
@@ -881,7 +881,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ RECIPES ══ */}
-        {activeTab==="Recipes"&&isAdmin&&(
+        {activeTab==="Recipes"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"16px"}}>Menu items saved in Zoho Creator</div>
             <div style={{...S.card,padding:"14px 16px",marginBottom:"18px",display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap"}}>
@@ -1140,7 +1140,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ COGS REPORT ══ */}
-        {activeTab==="COGS Report"&&isAdmin&&(
+        {activeTab==="COGS Report"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"20px"}}>Full P&L — {date} — Live from Zoho</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:"14px",marginBottom:"22px"}}>
@@ -1222,7 +1222,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ EMPLOYEES ══ */}
-        {activeTab==="Employees"&&isAdmin&&(
+        {activeTab==="Employees"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"20px"}}>Staff Directory — Stored in Zoho Creator</div>
             <div style={{...S.card,padding:"20px",marginBottom:"24px"}}>
@@ -1314,7 +1314,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ ROLE TEMPLATES ══ */}
-        {activeTab==="Role Templates"&&isAdmin&&(
+        {activeTab==="Role Templates"&&(
           <RoleTemplates S={S} showFlash={showFlash} employees={employees} setEmps={setEmps}/>
         )}
 
@@ -1334,17 +1334,17 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ SOPs ══ */}
-        {(activeTab==="SOPs")&&isAdmin&&(
+        {(activeTab==="SOPs")&&(
           <SOPs S={S} showFlash={showFlash}/>
         )}
 
         {/* ══ RECEIPTS ══ */}
-        {(activeTab==="Receipts")&&isAdmin&&(
+        {(activeTab==="Receipts")&&(
           <Receipts S={S} showFlash={showFlash} zoho={zoho}/>
         )}
 
         {/* ══ EXPORT ══ */}
-        {(activeTab==="Export")&&isAdmin&&(
+        {(activeTab==="Export")&&(
           <ExportPanel
             S={S} date={date}
             M={M} employees={employees}
