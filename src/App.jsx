@@ -1740,27 +1740,38 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
       return;
     }
     setSaving(true);
-    try {
-      const created = [];
-      for (const row of valid) {
-        const data = {
-          requested_by: requester,
-          item: row.item.trim(),
-          qty: Number(row.qty),
-          unit: row.unit.trim(),
-          needed_by: row.needed_by || today,
-          notes: row.notes.trim(),
-          status: "Requested",
-        };
-        const res = await zoho("create", "Kitchen_Orders", { data });
-        created.push({ ...data, ID: res.data?.ID || `${Date.now()}-${created.length}` });
+    const localOrders = valid.map((row, idx) => ({
+      ID: `local-${Date.now()}-${idx}`,
+      requested_by: requester,
+      item: row.item.trim(),
+      qty: Number(row.qty),
+      unit: row.unit.trim(),
+      needed_by: row.needed_by || today,
+      notes: row.notes.trim(),
+      status: "Saving",
+    }));
+    setOrders(p => [...localOrders, ...p]);
+    setRows([{ ...blankRow }]);
+
+    let failed = 0;
+    for (const order of localOrders) {
+      try {
+        const res = await zoho("create", "Kitchen_Orders", {
+          data: { ...order, status: "Requested" },
+        });
+        const savedId = res.data?.ID || order.ID;
+        setOrders(p => p.map(o => o.ID === order.ID ? { ...o, ID: savedId, status: "Requested" } : o));
+      } catch (e) {
+        failed += 1;
+        console.error("Kitchen order save error", e);
+        setOrders(p => p.map(o => o.ID === order.ID ? { ...o, status: "Local Only" } : o));
       }
-      setOrders(p => [...created, ...p]);
-      setRows([{ ...blankRow }]);
+    }
+
+    if (failed) {
+      showFlash("Order shown below, but Zoho save failed — check Kitchen Order List field types");
+    } else {
       showFlash("Kitchen order submitted ✓");
-    } catch (e) {
-      console.error("Kitchen order save error", e);
-      showFlash("Save error — check Kitchen Order List fields in Zoho");
     }
     setSaving(false);
   };
@@ -1873,13 +1884,13 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
       <div style={{ ...S.card, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr>{["Requested By", "Item", "Qty", "Unit", "Recommendation", "Rate"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+            <tr>{["Requested By", "Item", "Qty", "Unit", "Recommendation", "Rate", "Status"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ ...S.td, color: "#555" }}>Loading kitchen orders...</td></tr>
+              <tr><td colSpan={7} style={{ ...S.td, color: "#555" }}>Loading kitchen orders...</td></tr>
             ) : orders.length === 0 ? (
-              <tr><td colSpan={6} style={{ ...S.td, color: "#555" }}>No kitchen orders yet.</td></tr>
+              <tr><td colSpan={7} style={{ ...S.td, color: "#555" }}>No kitchen orders yet.</td></tr>
             ) : orders.map((order, idx) => (
               <tr key={order.ID || idx} style={{ borderTop: idx ? "1px solid #1a1916" : "none" }}>
                 <td style={S.td}>{order.requested_by || "Staff"}</td>
@@ -1893,6 +1904,9 @@ function KitchenOrderList({ S, me, zoho, showFlash }) {
                 </td>
                 <td style={{ ...S.td, color: order.rate ? "#7eb87e" : "#555", fontWeight: order.rate ? "700" : "400" }}>
                   {order.rate || "Rate from selected store"}
+                </td>
+                <td style={{ ...S.td, color: order.status === "Local Only" ? "#c07070" : order.status === "Saving" ? "#c8a96e" : "#666", fontSize: "12px" }}>
+                  {order.status || "Requested"}
                 </td>
               </tr>
             ))}
