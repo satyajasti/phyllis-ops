@@ -16,10 +16,13 @@ const REPORTS = {
   Employees:          "All_Employees",
   Recipes:            "All_Recipes",
   Ingredients:        "All_Ingredients",
+  Ingredients_Report: "All_Ingredients",
   Recipe_Ingredients: "All_Recipe_Ingredients",
   PAR_Entries:        "PAR_Entries_Report",
   Sales_Entries:      "Sales_Entries_Report",
   Labor_Entries:      "Labor_Entries_Report",
+  Kitchen_Orders:     "Kitchen_Order_List_Report",
+  Kitchen_Order_List: "Kitchen_Order_List_Report",
 };
 
 // ── Exact Zoho Creator form names ──
@@ -31,6 +34,8 @@ const FORMS = {
   PAR_Entries:        "PAR_Entries",
   Sales_Entries:      "Sales_Entries",
   Labor_Entries:      "Labor_Entries",
+  Kitchen_Orders:     "Kitchen_Order_List",
+  Kitchen_Order_List: "Kitchen_Order_List",
 };
 
 // ── Field name mappings from app → Zoho ──
@@ -43,8 +48,7 @@ const FIELD_MAPS = {
   }),
   Recipes: (d) => ({
     Recipe_Name: d.recipe_name || d.name || "",
-    Selling_Price: d.selling_price || d.price || 0,
-    Is_Active: "true",
+    Selling_Price: parseFloat(parseFloat(d.selling_price || d.price || 0).toFixed(2)),
   }),
   Ingredients: (d) => ({
     Ingredient_Name: d.ingredient_name || "",
@@ -73,7 +77,7 @@ const FIELD_MAPS = {
     Recipe_Name: d.recipe_name || "",
     Recipe_ID: d.recipe_id || "",
     Quantity_Sold: d.qty_sold || 0,
-    Selling_Price: d.selling_price || 0,
+    Selling_Price: parseFloat(parseFloat(d.selling_price || 0).toFixed(2)),
     Entered_By: d.entered_by || "",
   }),
   Labor_Entries: (d) => ({
@@ -84,6 +88,21 @@ const FIELD_MAPS = {
     Hours_Worked: d.hours_worked || 0,
     Hourly_Rate: d.hourly_rate || 0,
   }),
+  Kitchen_Orders: (d) => ({
+    Requested_By: {
+      first_name: String(d.requested_by || "").split(/\s+/)[0] || "",
+      last_name: String(d.requested_by || "").split(/\s+/).slice(1).join(" "),
+    },
+    Item: d.item || "",
+    Qty: d.qty || 0,
+    Unit: d.unit || "",
+    Needed_By: toZohoDate(d.needed_by || ""),
+    Notes: d.notes || "",
+    Recommendation: d.recommendation || "",
+    Rate: d.rate || "",
+    Status: d.status || "Requested",
+  }),
+  Kitchen_Order_List: (d) => FIELD_MAPS.Kitchen_Orders(d),
 };
 
 // ── Normalize records from Zoho → app format ──
@@ -91,10 +110,15 @@ function normalize(form, records) {
   if (!records || !Array.isArray(records)) return [];
   return records.map((r) => {
     if (form === "Employees") {
+      const name = r.Name || "";
+      const nameText = typeof name === "string" ? name : String(name.display_value || "").trim();
+      const parts = nameText.split(/\s+/).filter(Boolean);
       return {
         ID: r.ID,
-        first_name: r.Name?.first_name || "",
-        last_name: r.Name?.last_name || "",
+        name: nameText,
+        first_name: r.First_Name || r.first_name || (typeof name === "object" ? name.first_name || "" : parts[0] || ""),
+        last_name: r.Last_Name || r.last_name || (typeof name === "object" ? name.last_name || "" : parts.slice(1).join(" ")),
+        email: r.Email || r.email || "",
         designation: r.designation || "",
         hourly_rate: parseFloat(r.salary || 0),
         pin: r.pinin || "",
@@ -162,6 +186,23 @@ function normalize(form, records) {
         designation: r.Designation || "",
       };
     }
+    if (form === "Kitchen_Orders" || form === "Kitchen_Order_List") {
+      const requestedBy = typeof r.Requested_By === "object"
+        ? String(r.Requested_By.display_value || `${r.Requested_By.first_name || ""} ${r.Requested_By.last_name || ""}`).trim()
+        : r.Requested_By || "";
+      return {
+        ID: r.ID,
+        requested_by: requestedBy,
+        item: r.Item || "",
+        qty: parseFloat(r.Qty || 0),
+        unit: r.Unit || "",
+        needed_by: r.Needed_By || "",
+        notes: r.Notes || "",
+        recommendation: r.Recommendation || "",
+        rate: r.Rate || "",
+        status: r.Status || "Requested",
+      };
+    }
     return r;
   });
 }
@@ -192,7 +233,16 @@ export default async function handler(req, res) {
         if (criteria) url += `&criteria=${encodeURIComponent(criteria)}`;
         const r = await fetch(url, { method: "GET", headers });
         const d = await r.json();
-        console.log("Zoho raw response for", reportName, ":", JSON.stringify(d).substring(0,500));
+        if (String(d.code) === "3100") {
+          return res.status(200).json([]);
+        }
+        if (!r.ok || (d.code && String(d.code) !== "3000")) {
+          return res.status(502).json({
+            error: "zoho_get_failed",
+            message: d.description || d.message || "Could not load Zoho Creator data.",
+            details: d,
+          });
+        }
         const normalized = normalize(form, d.data || []);
         return res.status(200).json(normalized);
       }
@@ -215,6 +265,10 @@ export default async function handler(req, res) {
           body: JSON.stringify({ data: mappedData }),
         });
         const d = await r.json();
+        if (!r.ok || (d.code && String(d.code) !== "3000")) {
+          const errMsg = d.message || d.description || JSON.stringify(d);
+          return res.status(200).json({ error: errMsg, details: d });
+        }
         return res.status(200).json(d);
       }
 

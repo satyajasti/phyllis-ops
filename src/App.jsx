@@ -1,26 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 
-// ─── Shifts API helper ───
-const shifts = async (action, payload = {}) => {
-  const res = await fetch("/api/shifts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, ...payload }),
-  });
-  return res.json();
-};
-
 // ─── All available modules ───
 const ALL_MODULES = [
   "Dashboard","PAR Entry","Ingredient Costs","Recipes","Sales Entry",
-  "Staff Hours","Analytics","COGS Report","Employees","Role Templates",
-  "My Schedule","Clock In/Out","My Timesheet","Time Off",
-  "Scheduling","Time Off Requests",
+  "Staff Hours","Kitchen Order List","Analytics","COGS Report","Employees","Role Templates",
   "Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"
 ];
 const DEFAULT_STAFF_MODULES = [
-  "Dashboard","PAR Entry","Sales Entry","Staff Hours",
-  "My Schedule","Clock In/Out","My Timesheet","Time Off",
+  "Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List",
   "Temp Log","Checklists","Waste Log"
 ];
 
@@ -31,47 +18,35 @@ const zoho = async (action, form, payload = {}) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, form, ...payload }),
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || data?.error) {
+    const msg = typeof data?.message === "string" ? data.message
+      : typeof data?.error === "string" ? data.error
+      : JSON.stringify(data);
+    throw new Error(msg || "Zoho request failed");
+  }
+  return data;
 };
 
-// ─── Static ingredients list ───
-const INGREDIENTS = [
-  { id:"p1",  name:"Chicken Wings (whole)",     unit:"case/40lb",     category:"Proteins",    par:"2 cases/wk" },
-  { id:"p2",  name:"Chicken Wingettes",          unit:"case/40lb",     category:"Proteins",    par:"1 case/wk" },
-  { id:"p3",  name:"Chicken Breast",             unit:"bag/5 breasts", category:"Proteins",    par:"6 bags/wk" },
-  { id:"p4",  name:"Turkey Bacon",               unit:"pack/1lb",      category:"Proteins",    par:"8 packs/wk" },
-  { id:"p5",  name:"Ground Beef 80/20",          unit:"pack/5lb",      category:"Proteins",    par:"3 packs/wk" },
-  { id:"p6",  name:"Ground Turkey",              unit:"pack/3lb",      category:"Proteins",    par:"4 packs/wk" },
-  { id:"p7",  name:"Chicken Sausage",            unit:"pack/5lb",      category:"Proteins",    par:"3 packs/wk" },
-  { id:"p8",  name:"Steak Filets",               unit:"case/10lb",     category:"Proteins",    par:"1 case/wk" },
-  { id:"p9",  name:"Pulled Pork",                unit:"bag/10lb",      category:"Proteins",    par:"2 bags/wk" },
-  { id:"p10", name:"Frozen Salmon",              unit:"case/10lb",     category:"Proteins",    par:"2 cases/wk" },
-  { id:"p11", name:"Shrimp 16/20",               unit:"bag/5lb",       category:"Proteins",    par:"3 bags/wk" },
-  { id:"p12", name:"Catfish Fillets",            unit:"case/10lb",     category:"Proteins",    par:"2 cases/wk" },
-  { id:"p13", name:"Turkey Sausage Links",       unit:"box/5lb",       category:"Proteins",    par:"2 boxes/wk" },
-  { id:"p14", name:"Turkey Sausage Patties",     unit:"box/5lb",       category:"Proteins",    par:"1 box/wk" },
-  { id:"p15", name:"Bacon Thick-Cut",            unit:"pack/3lb",      category:"Proteins",    par:"5 packs/wk" },
-  { id:"p16", name:"Eggs (large)",               unit:"case/15doz",    category:"Proteins",    par:"1.5 cases/wk" },
-  { id:"d1",  name:"Whole Milk",                 unit:"gallon",        category:"Dairy",       par:"4 gal/wk" },
-  { id:"d2",  name:"Heavy Cream",                unit:"quart",         category:"Dairy",       par:"3 qt/wk" },
-  { id:"d3",  name:"Butter (unsalted)",          unit:"pack/4 sticks", category:"Dairy",       par:"5 packs/wk" },
-  { id:"d4",  name:"Shredded Cheddar",           unit:"bag/5lb",       category:"Dairy",       par:"1 bag/wk" },
-  { id:"d5",  name:"Buttermilk",                 unit:"gallon",        category:"Dairy",       par:"3 gal/wk" },
-  { id:"ds1", name:"Stone-Ground Grits",         unit:"bag/5lb",       category:"Dry Storage", par:"6 bags/wk" },
-  { id:"ds2", name:"All-Purpose Flour",          unit:"bag/25lb",      category:"Dry Storage", par:"1 bag/wk" },
-  { id:"ds3", name:"Self-Rising Flour",          unit:"bag/25lb",      category:"Dry Storage", par:"1 bag/wk" },
-  { id:"ds4", name:"Panko Breadcrumbs",          unit:"bag/2.5lb",     category:"Dry Storage", par:"2 bags/wk" },
-  { id:"ds5", name:"Canola Oil",                 unit:"jug/35lb",      category:"Dry Storage", par:"1 jug/wk" },
-  { id:"ds6", name:"Brown Sugar",                unit:"bag/4lb",       category:"Dry Storage", par:"2 bags/wk" },
-  { id:"pr1", name:"Yellow Onions",              unit:"bag/10lb",      category:"Produce",     par:"2 bags/wk" },
-  { id:"pr2", name:"Garlic (fresh)",             unit:"bag/3lb",       category:"Produce",     par:"2 bags/wk" },
-  { id:"pr3", name:"Roma Tomatoes",              unit:"case/25lb",     category:"Produce",     par:"1 case/wk" },
-  { id:"pr4", name:"Sweet Potatoes",             unit:"box/40lb",      category:"Produce",     par:"1 box/wk" },
-  { id:"pr5", name:"Collard Greens",             unit:"box/20lb",      category:"Produce",     par:"1 box/wk" },
-  { id:"pr6", name:"Avocados",                   unit:"each",          category:"Produce",     par:"6/wk" },
-];
+const asArray = value => Array.isArray(value) ? value : [];
 
-const CATS = ["Proteins","Dairy","Dry Storage","Produce"];
+// ─── Static ingredients list ───
+// Ingredients loaded dynamically from Zoho — see state: ingredients
+
+function orderUnitFromParUnit(unit = "") {
+  const raw = String(unit).trim().toLowerCase();
+  if (raw.startsWith("case")) return "case";
+  if (raw.startsWith("bag")) return "bag";
+  if (raw.startsWith("box")) return "box";
+  if (raw.startsWith("pack")) return "pack";
+  if (raw.startsWith("quart")) return "qt";
+  if (raw.startsWith("gallon")) return "gal";
+  if (raw.startsWith("each")) return "each";
+  if (raw.includes("lb")) return "lb";
+  return raw || "lb";
+}
+
+const INGREDIENT_CATS = ["Proteins","Dairy","Dry Storage","Produce"];
 const DESIGNATIONS = [
   "General Manager","Kitchen Manager","Line Cook","Prep Cook",
   "Server","Bartender","Host/Hostess","Dishwasher","Cashier",
@@ -182,11 +157,16 @@ export default function PhyllisOps(){
   const [selEmp,setSelEmp]   = useState("");
   const [pin,setPin]         = useState("");
   const [pinErr,setPinErr]   = useState("");
+  const [staffQuery,setStaffQuery] = useState("");
+  const [staffPin,setStaffPin]     = useState("");
+  const [staffErr,setStaffErr]     = useState("");
+  const [loginEmployeesLoading,setLoginEmployeesLoading] = useState(false);
   const [tab,setTab]         = useState("Dashboard");
   const [date,setDate]       = useState(new Date().toISOString().split("T")[0]);
 
   // Zoho data
   const [employees,setEmps]  = useState([]);
+  const [ingredients,setIngredients] = useState([]);
   const [recipes,setRecipes] = useState([]);
   const [recipeIngs,setRecipeIngs] = useState([]); // all recipe_ingredients records
   const [costs,setCosts]     = useState({});        // {ingredient_id: cost}
@@ -195,6 +175,7 @@ export default function PhyllisOps(){
   const [laborData,setLaborData] = useState({});    // {emp_id: {hours, zohoId}}
 
   const [loading,setLoading] = useState(true);
+  const [loadErr,setLoadErr] = useState("");
   const [saving,setSaving]   = useState("");
   const [flash,setFlash]     = useState("");
   const [pricePanel,setPP]   = useState(null);
@@ -240,29 +221,82 @@ export default function PhyllisOps(){
 
   // ─── Load master data on mount ───
   useEffect(()=>{
+    if(!me) return;
     (async()=>{
+      setLoadErr("");
       try{
         const [emps,recs,rIngs,ingCosts]=await Promise.all([
           zoho("getAll","Employees"),
           zoho("getAll","Recipes"),
           zoho("getAll","Recipe_Ingredients"),
-          zoho("getAll","Ingredients_Report"),
+          zoho("getAll","Ingredients"),
         ]);
-        setEmps(emps||[]);
-        setRecipes(recs||[]);
-        setRecipeIngs(rIngs||[]);
-        // Build cost map from Ingredients form
+        setEmps(asArray(emps));
+        setRecipes(asArray(recs));
+        setRecipeIngs(asArray(rIngs));
+        // Build ingredients list from Zoho (normalized to same shape as old static array)
+        const ingList=asArray(ingCosts).map(r=>({
+          id: r.ingredient_id||r.Ingredient_ID||r.ID,
+          zohoId: r.ID,
+          name: r.ingredient_name||r.Ingredient_Name||"",
+          unit: r.purchase_unit||r.Purchase_Unit||"",
+          category: r.category||r.Category||"",
+          par: r.weekly_par||r.Weekly_PAR||"",
+          cost_per_unit: parseFloat(r.cost_per_unit||r.Cost_Per_Unit||0),
+        }));
+        setIngredients(ingList);
+        // Build cost map from Ingredients
         const cm={};
-        (ingCosts||[]).forEach(r=>{ cm[r.ingredient_id||r.Ingredient_ID]=parseFloat(r.cost_per_unit||r.Cost_Per_Unit||0); });
+        ingList.forEach(r=>{ cm[r.id]=r.cost_per_unit; });
         setCosts(cm);
-      }catch(e){console.error("Load error",e);}
+      }catch(e){
+        console.error("Load error",e);
+        setLoadErr(e.message||"Could not load Zoho data.");
+      }
       setLoading(false);
     })();
-  },[]);
+  },[me]);
+
+  useEffect(()=>{
+    if(me||employees.length>0) return;
+    let cancelled=false;
+    (async()=>{
+      const cachedAt=Number(sessionStorage.getItem("phyllis_employee_cache_at")||0);
+      const cached=sessionStorage.getItem("phyllis_employee_cache");
+      if(cached&&Date.now()-cachedAt<5*60*1000){
+        try{
+          const parsed=JSON.parse(cached);
+          if(Array.isArray(parsed)&&parsed.length){
+            setEmps(parsed);
+            return;
+          }
+        }catch{}
+      }
+      setLoginEmployeesLoading(true);
+      try{
+        const controller=new AbortController();
+        const timeout=setTimeout(()=>controller.abort(),6000);
+        const r=await fetch("/api/employees",{signal:controller.signal});
+        clearTimeout(timeout);
+        const d=await r.json();
+        if(!cancelled&&d.success&&Array.isArray(d.employees)){
+          setEmps(d.employees);
+          sessionStorage.setItem("phyllis_employee_cache",JSON.stringify(d.employees));
+          sessionStorage.setItem("phyllis_employee_cache_at",String(Date.now()));
+        }
+        else if(!cancelled) setStaffErr(d.message||d.error||"Could not load employees from Zoho.");
+      }catch(e){
+        console.error("Employee login load error",e);
+        if(!cancelled) setStaffErr("Could not load employees. Restart the local server or try the deployed app.");
+      }
+      if(!cancelled) setLoginEmployeesLoading(false);
+    })();
+    return()=>{cancelled=true;};
+  },[me,employees.length]);
 
   // ─── Load daily data when date changes ───
   useEffect(()=>{
-    if(!date) return;
+    if(!me||!date) return;
     (async()=>{
       try{
         const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -275,20 +309,23 @@ export default function PhyllisOps(){
         ]);
         // Build PAR map
         const pm={};
-        (pars||[]).forEach(r=>{pm[r.ingredient_id||r.Ingredient_ID]={on_hand:r.on_hand||r.On_Hand||"",order_qty:r.order_qty||r.Order_Quantity||"",zohoId:r.ID};});
+        asArray(pars).forEach(r=>{pm[r.ingredient_id||r.Ingredient_ID]={on_hand:r.on_hand||r.On_Hand||"",order_qty:r.order_qty||r.Order_Quantity||"",zohoId:r.ID};});
         setParData(pm);
-        setPS((pars||[])[0]?.completed_by||(pars||[])[0]?.Completed_By||"");
+        setPS(asArray(pars)[0]?.completed_by||asArray(pars)[0]?.Completed_By||"");
         // Build sales map
         const sm={};
-        (sales||[]).forEach(r=>{sm[r.recipe_id||r.Recipe_ID]={qty:r.qty_sold||r.Quantity_Sold||0,zohoId:r.ID};});
+        asArray(sales).forEach(r=>{sm[r.recipe_id||r.Recipe_ID]={qty:r.qty_sold||r.Quantity_Sold||0,zohoId:r.ID};});
         setSalesData(sm);
         // Build labor map
         const lm={};
-        (labor||[]).forEach(r=>{lm[r.employee_id||r.Employee_ID]={hours:r.hours_worked||r.Hours_Worked||0,zohoId:r.ID};});
+        asArray(labor).forEach(r=>{lm[r.employee_id||r.Employee_ID]={hours:r.hours_worked||r.Hours_Worked||0,zohoId:r.ID};});
         setLaborData(lm);
-      }catch(e){console.error("Daily load error",e);}
+      }catch(e){
+        console.error("Daily load error",e);
+        setLoadErr(e.message||"Could not load today's Zoho data.");
+      }
     })();
-  },[date]);
+  },[me,date]);
 
   // ─── Attach ingredients to recipes ───
   const recipesWithIngs = recipes.map(r=>{
@@ -363,7 +400,7 @@ export default function PhyllisOps(){
         }
       }
       showFlash("Sales saved to Zoho ✓");
-    }catch(e){showFlash("Save error: "+e.message);}
+    }catch(e){showFlash("Save error");}
     setSaving("");
   };
 
@@ -393,7 +430,7 @@ export default function PhyllisOps(){
         }
       }
       showFlash("Hours saved to Zoho ✓");
-    }catch(e){showFlash("Save error: "+e.message);}
+    }catch(e){showFlash("Save error");}
     setSaving("");
   };
 
@@ -420,7 +457,7 @@ export default function PhyllisOps(){
       }
       setEmpForm({firstName:"",lastName:"",designation:DESIGNATIONS[0],rate:"",pin:""});
       showFlash("Employee saved to Zoho ✓");
-    }catch(e){showFlash("Save error: "+e.message);}
+    }catch(e){showFlash("Save error");}
     setSaving("");
   };
 
@@ -447,8 +484,8 @@ export default function PhyllisOps(){
       if(existing&&existing.length>0){
         await zoho("update","Ingredients_Report",{data:{cost_per_unit:value},recordId:existing[0].ID});
       } else {
-        const ing=INGREDIENTS.find(i=>i.id===ingId);
-        await zoho("create","Ingredients",{data:{
+        const ing=ingredients.find(i=>i.id===ingId)||INGREDIENTS.find(i=>i.id===ingId);
+        const newRec=await zoho("create","Ingredients",{data:{
           ingredient_id:ingId,
           ingredient_name:ing?.name||ingId,
           purchase_unit:ing?.unit||"",
@@ -456,6 +493,7 @@ export default function PhyllisOps(){
           weekly_par:ing?.par||"",
           cost_per_unit:value,
         }});
+        if(newRec?.data?.ID) setIngredients(prev=>prev.map(i=>i.id===ingId?{...i,zohoId:newRec.data.ID,cost_per_unit:value}:i));
       }
     }catch(e){console.error("Cost save error",e);}
   };
@@ -477,26 +515,81 @@ export default function PhyllisOps(){
     else setPinErr("Incorrect PIN");
   };
 
+  const empName=emp=>emp.name||`${emp.first_name||emp.First_Name||""} ${emp.last_name||emp.Last_Name||""}`.trim()||"Unnamed employee";
+  const empRole=emp=>emp.designation||emp.Designation||emp.role||"Staff";
+  const activeEmployees=employees.filter(emp=>{
+    const raw=emp.is_active ?? emp.Is_Active;
+    const val=String(raw ?? "true").toLowerCase();
+    return !["false","no","inactive","disabled","0"].includes(val);
+  });
+  const staffMatches=activeEmployees
+    .filter(emp=>{
+      const q=staffQuery.trim().toLowerCase();
+      if(!q) return true;
+      return `${empName(emp)} ${empRole(emp)} ${emp.email||emp.Email||""}`.toLowerCase().includes(q);
+    })
+    .slice(0,8);
+  const selectedStaff=activeEmployees.find(emp=>String(emp.ID||emp.id)===String(selEmp));
+
+  const doStaffLogin=async()=>{
+    setStaffErr("");
+    if(!selEmp){ setStaffErr("Please select your name."); return; }
+    if(!staffPin){ setStaffErr("Please enter your PIN."); return; }
+    setOauthLoading(true);
+    try{
+      const r=await fetch("/api/auth?action=verify-pin",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({employeeId:selEmp,pin:staffPin}),
+      });
+      const d=await r.json();
+      if(d.success){
+        setMe(d.user);
+        setStaffPin("");
+        setStaffErr("");
+      }else{
+        setStaffErr(d.message||d.error||"Invalid PIN");
+      }
+    }catch(e){
+      setStaffErr("Network error. Please try again.");
+    }
+    setOauthLoading(false);
+  };
+
   // Dynamic tabs based on allowed modules
-  const TAB_ORDER=["Dashboard","My Schedule","Clock In/Out","My Timesheet","Time Off","PAR Entry","Sales Entry","Staff Hours","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Scheduling","Time Off Requests","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
+  // Derive categories from loaded ingredients, fallback to defaults while loading
+  const INGREDIENTS = ingredients.length > 0 ? ingredients : [];
+  const CATS = ingredients.length > 0
+    ? [...new Set(ingredients.map(i=>i.category))].filter(Boolean).sort()
+    : INGREDIENT_CATS;
+
+  const TAB_GROUPS=[
+    {group:"Daily",   tabs:["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Temp Log","Checklists","Waste Log"]},
+    {group:"Menu",    tabs:["Ingredient Costs","Recipes","SOPs"]},
+    {group:"Reports", tabs:["Analytics","COGS Report","Receipts","Export"]},
+    {group:"Admin",   tabs:["Employees","Role Templates"]},
+  ];
+  const TAB_ORDER=["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
   const allowed=isAdmin?["ALL"]:(me?.allowedModules||DEFAULT_STAFF_MODULES);
   const canSee=(mod)=>allowed.includes("ALL")||allowed.includes(mod);
   const TABS=TAB_ORDER.filter(t=>canSee(t));
+  const activeTab=TABS.includes(tab)?tab:(TABS[0]||"Dashboard");
+  const visibleGroups=TAB_GROUPS.map(g=>({...g,tabs:g.tabs.filter(t=>canSee(t))})).filter(g=>g.tabs.length>0);
 
   const S={
     page:{minHeight:"100vh",background:"#0c0b09",color:"#d4c9b8",fontFamily:"'Trebuchet MS',sans-serif"},
-    card:{background:"#141210",border:"1px solid #252220",borderRadius:"3px"},
-    lbl:{fontSize:"10px",letterSpacing:"3px",textTransform:"uppercase",color:"#666"},
-    inp:{background:"#0c0b09",border:"1px solid #2e2b26",color:"#d4c9b8",padding:"6px 10px",fontSize:"13px",borderRadius:"2px",outline:"none"},
-    btn:{background:"#c8a96e",color:"#0c0b09",border:"none",padding:"8px 18px",fontSize:"12px",fontWeight:"700",letterSpacing:"1px",cursor:"pointer",borderRadius:"2px"},
-    btnSm:{background:"#1e2820",color:"#7eb87e",border:"1px solid #2e4830",padding:"5px 12px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"},
-    btnDanger:{background:"none",border:"1px solid #3a1e1e",color:"#8a5555",padding:"5px 12px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"},
-    th:{padding:"8px 12px",textAlign:"left",fontSize:"10px",letterSpacing:"1px",textTransform:"uppercase",color:"#555",background:"#100f0d"},
-    td:{padding:"8px 12px",fontSize:"13px"},
+    card:{background:"#141210",border:"1px solid #252220",borderRadius:"4px"},
+    lbl:{fontSize:"11px",letterSpacing:"2px",textTransform:"uppercase",color:"#666"},
+    inp:{background:"#0c0b09",border:"1px solid #2e2b26",color:"#d4c9b8",padding:"9px 12px",fontSize:"16px",borderRadius:"4px",outline:"none",WebkitAppearance:"none"},
+    btn:{background:"#c8a96e",color:"#0c0b09",border:"none",padding:"10px 20px",fontSize:"13px",fontWeight:"700",letterSpacing:"1px",cursor:"pointer",borderRadius:"4px",touchAction:"manipulation"},
+    btnSm:{background:"#1e2820",color:"#7eb87e",border:"1px solid #2e4830",padding:"7px 14px",fontSize:"12px",cursor:"pointer",borderRadius:"4px",touchAction:"manipulation"},
+    btnDanger:{background:"none",border:"1px solid #3a1e1e",color:"#8a5555",padding:"7px 14px",fontSize:"12px",cursor:"pointer",borderRadius:"4px",touchAction:"manipulation"},
+    th:{padding:"10px 12px",textAlign:"left",fontSize:"11px",letterSpacing:"1px",textTransform:"uppercase",color:"#555",background:"#100f0d"},
+    td:{padding:"10px 12px",fontSize:"14px"},
     amber:{color:"#c8a96e"},green:{color:"#7eb87e"},red:{color:"#c07070"},
   };
 
-  if(loading) return(
+  if(loading&&me) return(
     <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
       <div style={{...S.lbl}}>Connecting to Zoho Creator…</div>
       <div style={{fontSize:"12px",color:"#444"}}>Loading your data</div>
@@ -511,29 +604,60 @@ export default function PhyllisOps(){
           <div style={{fontSize:"36px",marginBottom:"10px"}}>🍳</div>
           <div style={{...S.lbl,marginBottom:"6px"}}>Phyllis Brunch · Marietta GA</div>
           <div style={{fontSize:"22px",color:"#f0e8d8",letterSpacing:"1px",fontWeight:"600"}}>Operations Portal</div>
-          <div style={{fontSize:"12px",color:"#555",marginTop:"6px"}}>Powered by Zoho Creator & Zoho Shifts</div>
+          <div style={{fontSize:"12px",color:"#555",marginTop:"6px"}}>Staff PIN Access</div>
         </div>
         {oauthLoading&&(
           <div style={{textAlign:"center",padding:"20px 0"}}>
             <div style={{...S.lbl,marginBottom:"8px"}}>Signing you in…</div>
-            <div style={{fontSize:"12px",color:"#555"}}>Verifying your Zoho account</div>
+            <div style={{fontSize:"12px",color:"#555"}}>Checking your PIN</div>
           </div>
         )}
-        {loginErr&&(
+        {(loginErr||staffErr)&&(
           <div style={{background:"#1a0a0a",border:"1px solid #3a1e1e",borderRadius:"3px",padding:"12px 14px",marginBottom:"18px",fontSize:"12px",color:"#c07070",lineHeight:"1.6"}}>
-            {loginErr}
+            {loginErr||staffErr}
           </div>
         )}
         {!oauthLoading&&(
           <>
-            <button onClick={doZohoLogin}
-              style={{...S.btn,width:"100%",padding:"14px",fontSize:"14px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",boxSizing:"border-box"}}>
-              <span style={{fontSize:"18px"}}>🔐</span> Sign in with Zoho
-            </button>
-            <div style={{marginTop:"10px",fontSize:"11px",color:"#444",textAlign:"center",lineHeight:"1.6"}}>
-              Use the same email & password you use for Zoho Shifts
+            <div style={{marginBottom:"22px"}}>
+              <div style={{...S.lbl,marginBottom:"8px",color:"#7eb87e"}}>Staff login</div>
+              <input value={staffQuery} placeholder="Search your name, email, or role"
+                onChange={e=>{setStaffQuery(e.target.value);setSelEmp("");setStaffErr("");}}
+                style={{...S.inp,width:"100%",boxSizing:"border-box",marginBottom:"8px"}}/>
+              <div style={{...S.card,maxHeight:"180px",overflowY:"auto",marginBottom:"12px"}}>
+                {loginEmployeesLoading&&(
+                  <div style={{padding:"12px",fontSize:"12px",color:"#555"}}>Loading employees...</div>
+                )}
+                {!loginEmployeesLoading&&staffMatches.length===0&&(
+                  <div style={{padding:"12px",fontSize:"12px",color:"#555"}}>No active employees found.</div>
+                )}
+                {staffMatches.map(emp=>{
+                  const id=emp.ID||emp.id;
+                  const selected=String(selEmp)===String(id);
+                  return(
+                    <button key={id} onClick={()=>{setSelEmp(id);setStaffQuery(empName(emp));setStaffErr("");}}
+                      style={{width:"100%",textAlign:"left",padding:"10px 12px",background:selected?"#0e1e0e":"transparent",border:"none",borderBottom:"1px solid #1e1c18",cursor:"pointer",color:selected?"#a0d4a0":"#d4c9b8"}}>
+                      <div style={{fontSize:"13px",fontWeight:"700"}}>{empName(emp)}</div>
+                      <div style={{fontSize:"11px",color:"#666",marginTop:"2px"}}>{emp.email||emp.Email||empRole(emp)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedStaff&&(
+                <div style={{background:"#0a160a",border:"1px solid #1a3a1a",padding:"10px 12px",marginBottom:"12px",fontSize:"12px",color:"#7eb87e"}}>
+                  Selected: {empName(selectedStaff)} · {empRole(selectedStaff)}
+                </div>
+              )}
+              <div style={{...S.lbl,marginBottom:"6px"}}>PIN</div>
+              <input type="password" value={staffPin} placeholder="Enter your PIN"
+                onChange={e=>{setStaffPin(e.target.value);setStaffErr("");}}
+                onKeyDown={e=>e.key==="Enter"&&doStaffLogin()}
+                style={{...S.inp,width:"100%",boxSizing:"border-box",marginBottom:"10px"}}/>
+              <button onClick={doStaffLogin} style={{...S.btn,width:"100%",padding:"12px"}}>Sign In</button>
             </div>
-            <div style={{marginTop:"24px",borderTop:"1px solid #1e1c18",paddingTop:"16px"}}>
+            <div style={{borderTop:"1px solid #1e1c18",paddingTop:"18px"}}>
+              <div style={{...S.lbl,marginBottom:"10px"}}>Admin login</div>
+            <div style={{marginTop:"8px"}}>
               <button onClick={()=>setShowPinFallback(p=>!p)}
                 style={{background:"none",border:"none",color:"#333",fontSize:"11px",cursor:"pointer",width:"100%",textAlign:"center"}}>
                 {showPinFallback?"▲ Hide":"▼ Admin PIN login"}
@@ -549,6 +673,7 @@ export default function PhyllisOps(){
                   <button onClick={doLogin} style={{...S.btn,width:"100%"}}>Sign In as Admin</button>
                 </div>
               )}
+            </div>
             </div>
           </>
         )}
@@ -578,7 +703,7 @@ export default function PhyllisOps(){
         <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
           {(flash||saving)&&<span style={{fontSize:"12px",...S.green}}>{saving||flash}</span>}
           <span style={{fontSize:"12px",color:"#888"}}>{fullName}</span>
-          <button onClick={()=>{setMe(null);setPin("");setSelEmp("");setPinErr("");sessionStorage.removeItem("phyllis_user");}}
+          <button onClick={()=>{setMe(null);setPin("");setSelEmp("");setPinErr("");setLoadErr("");sessionStorage.removeItem("phyllis_user");}}
             style={{background:"none",border:"1px solid #2e2b26",color:"#666",padding:"4px 10px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"}}>
             Sign Out
           </button>
@@ -595,25 +720,42 @@ export default function PhyllisOps(){
         </span>
       </div>
 
-      {/* Tabs */}
-      <div style={{background:"#100f0d",borderBottom:"1px solid #1e1c18",display:"flex",overflowX:"auto",padding:"0 12px"}}>
-        {TABS.map(t=>(
-          <button key={t} onClick={()=>setTab(t)} style={{
-            background:"none",border:"none",
-            borderBottom:tab===t?"2px solid #c8a96e":"2px solid transparent",
-            color:tab===t?"#c8a96e":"#555",padding:"11px 14px",fontSize:"11px",
-            letterSpacing:"1.5px",cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase"}}>
-            {t}
-          </button>
+      {/* Grouped Tabs */}
+      <div style={{background:"#100f0d",borderBottom:"1px solid #1e1c18",overflowX:"auto"}}>
+        {visibleGroups.map(g=>(
+          <div key={g.group} style={{display:"inline-flex",alignItems:"center",borderRight:"1px solid #1e1c18",padding:"0 4px"}}>
+            <span style={{fontSize:"9px",letterSpacing:"2px",textTransform:"uppercase",color:"#3a3830",padding:"0 8px",whiteSpace:"nowrap"}}>{g.group}</span>
+            {g.tabs.map(t=>(
+              <button key={t} onClick={()=>setTab(t)} style={{
+                background:"none",border:"none",
+                borderBottom:activeTab===t?"2px solid #c8a96e":"2px solid transparent",
+                color:activeTab===t?"#c8a96e":"#666",padding:"12px 12px",fontSize:"11px",
+                letterSpacing:"1px",cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",touchAction:"manipulation"}}>
+                {t}
+              </button>
+            ))}
+          </div>
         ))}
       </div>
 
-      <div style={{padding:"20px",maxWidth:"1100px",margin:"0 auto"}}>
+      <div style={{padding:"16px",maxWidth:"1100px",margin:"0 auto",boxSizing:"border-box"}}>
+        {loadErr&&(
+          <div style={{background:"#1a0a0a",border:"1px solid #3a1e1e",borderRadius:"3px",padding:"12px 14px",marginBottom:"18px",fontSize:"12px",color:"#c07070",lineHeight:"1.6"}}>
+            {loadErr}
+          </div>
+        )}
 
         {/* ══ DASHBOARD ══ */}
-        {tab==="Dashboard"&&(
+        {activeTab==="Dashboard"&&(
           <div>
-            <div style={{...S.lbl,marginBottom:"16px"}}>Summary — {date}</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"10px",marginBottom:"16px"}}>
+              <div style={S.lbl}>Summary — {date}</div>
+              <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                {canSee("Sales Entry")&&<button onClick={()=>setTab("Sales Entry")} style={{...S.btnSm,fontSize:"12px"}}>+ Log Sales</button>}
+                {canSee("PAR Entry")&&<button onClick={()=>setTab("PAR Entry")} style={{...S.btnSm,fontSize:"12px"}}>+ PAR Check</button>}
+                {canSee("Staff Hours")&&<button onClick={()=>setTab("Staff Hours")} style={{...S.btnSm,fontSize:"12px"}}>+ Staff Hours</button>}
+              </div>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:"12px",marginBottom:"20px"}}>
               {[
                 {l:"Revenue",      v:`$${M.rev.toFixed(2)}`,        c:"#7eb87e"},
@@ -652,24 +794,26 @@ export default function PhyllisOps(){
                 </div>
               </div>
             ):(
-              <div style={{...S.card,padding:"24px",textAlign:"center",color:"#444",fontSize:"13px"}}>
-                No sales for {date} — enter data in Sales Entry tab.
+              <div style={{...S.card,padding:"28px",textAlign:"center"}}>
+                <div style={{color:"#666",fontSize:"14px",marginBottom:"16px"}}>No sales logged for {date} yet.</div>
+                {canSee("Sales Entry")&&<button onClick={()=>setTab("Sales Entry")} style={{...S.btn,fontSize:"13px"}}>Log Today's Sales →</button>}
               </div>
             )}
           </div>
         )}
 
         {/* ══ PAR ENTRY ══ */}
-        {tab==="PAR Entry"&&(
+        {activeTab==="PAR Entry"&&(
           <div>
             <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"18px",flexWrap:"wrap"}}>
               <span style={S.lbl}>Completed by:</span>
               <input value={parStaff||fullName} onChange={e=>setPS(e.target.value)}
                 style={{...S.inp,width:"200px"}}/>
-              <button onClick={savePAR} style={S.btn} disabled={!!saving}>
-                {saving?"Saving…":"Save to Zoho"}
+              <button onClick={savePAR} style={{...S.btn,opacity:saving?0.6:1}} disabled={!!saving}>
+                {saving?"⏳ Saving…":"Save to Zoho"}
               </button>
             </div>
+            {ingredients.length===0&&<div style={{...S.card,padding:"20px",textAlign:"center",color:"#555",fontSize:"13px"}}>Loading ingredients from Zoho…</div>}
             {CATS.map(cat=>(
               <div key={cat} style={{marginBottom:"20px"}}>
                 <div style={{...S.amber,...S.lbl,marginBottom:"10px",paddingBottom:"6px",borderBottom:"1px solid #c8a96e22"}}>{cat}</div>
@@ -707,11 +851,47 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ INGREDIENT COSTS ══ */}
-        {tab==="Ingredient Costs"&&isAdmin&&(
+        {activeTab==="Ingredient Costs"&&(
           <div>
             <div style={{background:"#080f08",border:"1px solid #1a3a1a",borderRadius:"2px",padding:"10px 14px",marginBottom:"18px",fontSize:"12px",color:"#5a9a5a",lineHeight:"1.6"}}>
-              💡 Costs save to Zoho automatically as you type. Click 🔍 to compare supplier prices.
+              💡 Costs save to Zoho automatically as you type. Click 🔍 to compare prices. Add new ingredients with the form below.
             </div>
+            {/* ── Add New Ingredient ── */}
+            {isAdmin&&(
+              <div style={{...S.card,padding:"14px 16px",marginBottom:"20px"}}>
+                <div style={{...S.lbl,marginBottom:"10px",color:"#c8a96e"}}>Add new ingredient</div>
+                <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"flex-end"}}>
+                  <input id="ni-name" placeholder="Ingredient name" style={{...S.inp,flex:"2",minWidth:"140px"}}/>
+                  <input id="ni-unit" placeholder="Unit (e.g. bag/5lb)" style={{...S.inp,flex:"1",minWidth:"100px"}}/>
+                  <select id="ni-cat" style={{...S.inp,flex:"1",minWidth:"100px"}}>
+                    {INGREDIENT_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input id="ni-par" placeholder="PAR (e.g. 2 bags/wk)" style={{...S.inp,flex:"1",minWidth:"100px"}}/>
+                  <button style={S.btn} onClick={async()=>{
+                    const name=document.getElementById("ni-name").value.trim();
+                    const unit=document.getElementById("ni-unit").value.trim();
+                    const cat=document.getElementById("ni-cat").value;
+                    const par=document.getElementById("ni-par").value.trim();
+                    if(!name||!unit) return showFlash("Name and unit required");
+                    const prefix=cat==="Proteins"?"p":cat==="Dairy"?"d":cat==="Dry Storage"?"ds":"pr";
+                    const existing=ingredients.filter(i=>i.id.startsWith(prefix));
+                    const newId=prefix+(existing.length+1);
+                    setSaving("Adding ingredient...");
+                    try{
+                      const r=await zoho("create","Ingredients",{data:{ingredient_id:newId,ingredient_name:name,purchase_unit:unit,category:cat,weekly_par:par,cost_per_unit:0}});
+                      if(r.data?.ID){
+                        setIngredients(prev=>[...prev,{id:newId,zohoId:r.data.ID,name,unit,category:cat,par,cost_per_unit:0}]);
+                        document.getElementById("ni-name").value="";
+                        document.getElementById("ni-unit").value="";
+                        document.getElementById("ni-par").value="";
+                        showFlash("Ingredient added to Zoho ✓");
+                      }
+                    }catch(e){showFlash("Error: "+e.message);}
+                    setSaving("");
+                  }}>+ Add</button>
+                </div>
+              </div>
+            )}
             {CATS.map(cat=>(
               <div key={cat} style={{marginBottom:"22px"}}>
                 <div style={{...S.amber,...S.lbl,marginBottom:"10px",paddingBottom:"6px",borderBottom:"1px solid #c8a96e22"}}>{cat}</div>
@@ -761,7 +941,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ RECIPES ══ */}
-        {tab==="Recipes"&&isAdmin&&(
+        {activeTab==="Recipes"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"16px"}}>Menu items saved in Zoho Creator</div>
             <div style={{...S.card,padding:"14px 16px",marginBottom:"18px",display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap"}}>
@@ -819,8 +999,8 @@ export default function PhyllisOps(){
                     </div>
                   )}
                   {editRec===(rec.ID||rec.id)&&(
-                    <AddIngToRecipe recipe={rec} costs={costs} onAdd={async(ingId,qty)=>{
-                      const ing=INGREDIENTS.find(i=>i.id===ingId);
+                    <AddIngToRecipe recipe={rec} costs={costs} ingredients={INGREDIENTS} onAdd={async(ingId,qty)=>{
+                      const ing=ingredients.find(i=>i.id===ingId);
                       const d={
                         recipe_id:rec.ID||rec.id,
                         recipe_name:rec.recipe_name||rec.name,
@@ -840,7 +1020,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ SALES ENTRY ══ */}
-        {tab==="Sales Entry"&&(
+        {activeTab==="Sales Entry"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"16px"}}>Enter units sold — {date}</div>
             <div style={{...S.card,overflow:"hidden",marginBottom:"14px"}}>
@@ -888,7 +1068,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ STAFF HOURS ══ */}
-        {tab==="Staff Hours"&&(
+        {activeTab==="Staff Hours"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"8px"}}>Log hours worked — {date}</div>
             <div style={{fontSize:"12px",color:"#555",marginBottom:"16px"}}>Hours save to Zoho Creator. Labor cost auto-calculates from hourly rate.</div>
@@ -944,8 +1124,13 @@ export default function PhyllisOps(){
           </div>
         )}
 
+        {/* ══ KITCHEN ORDER LIST ══ */}
+        {activeTab==="Kitchen Order List"&&(
+          <KitchenOrderList S={S} me={me} zoho={zoho} showFlash={showFlash} ingredients={INGREDIENTS}/>
+        )}
+
         {/* ══ ANALYTICS ══ */}
-        {tab==="Analytics"&&(
+        {activeTab==="Analytics"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"8px"}}>Item Performance — {date}</div>
             <div style={{display:"flex",gap:"6px",marginBottom:"20px",flexWrap:"wrap"}}>
@@ -1020,7 +1205,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ COGS REPORT ══ */}
-        {tab==="COGS Report"&&isAdmin&&(
+        {activeTab==="COGS Report"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"20px"}}>Full P&L — {date} — Live from Zoho</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:"14px",marginBottom:"22px"}}>
@@ -1102,7 +1287,7 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ EMPLOYEES ══ */}
-        {tab==="Employees"&&isAdmin&&(
+        {activeTab==="Employees"&&(
           <div>
             <div style={{...S.lbl,marginBottom:"20px"}}>Staff Directory — Stored in Zoho Creator</div>
             <div style={{...S.card,padding:"20px",marginBottom:"24px"}}>
@@ -1194,67 +1379,37 @@ export default function PhyllisOps(){
         )}
 
         {/* ══ ROLE TEMPLATES ══ */}
-        {tab==="Role Templates"&&isAdmin&&(
+        {activeTab==="Role Templates"&&(
           <RoleTemplates S={S} showFlash={showFlash} employees={employees} setEmps={setEmps}/>
         )}
 
-        {/* ══ MY SCHEDULE ══ */}
-        {tab==="My Schedule"&&(
-          <MySchedule S={S} me={me} shifts={shifts}/>
-        )}
-
-        {/* ══ CLOCK IN/OUT ══ */}
-        {tab==="Clock In/Out"&&(
-          <ClockInOut S={S} me={me} shifts={shifts} showFlash={showFlash}/>
-        )}
-
-        {/* ══ MY TIMESHEET ══ */}
-        {tab==="My Timesheet"&&(
-          <MyTimesheet S={S} me={me} shifts={shifts}/>
-        )}
-
-        {/* ══ TIME OFF ══ */}
-        {tab==="Time Off"&&(
-          <TimeOff S={S} me={me} shifts={shifts} showFlash={showFlash}/>
-        )}
-
-        {/* ══ SCHEDULING (Admin) ══ */}
-        {tab==="Scheduling"&&isAdmin&&(
-          <Scheduling S={S} employees={employees} shifts={shifts} showFlash={showFlash}/>
-        )}
-
-        {/* ══ TIME OFF REQUESTS (Admin) ══ */}
-        {tab==="Time Off Requests"&&isAdmin&&(
-          <TimeOffRequests S={S} employees={employees} shifts={shifts} showFlash={showFlash}/>
-        )}
-
         {/* ══ TEMP LOG ══ */}
-        {(tab==="Temp Log")&&(
+        {(activeTab==="Temp Log")&&(
           <TempLog date={date} me={me} zoho={zoho} showFlash={showFlash} S={S}/>
         )}
 
         {/* ══ CHECKLISTS ══ */}
-        {(tab==="Checklists")&&(
+        {(activeTab==="Checklists")&&(
           <Checklists date={date} me={me} zoho={zoho} showFlash={showFlash} S={S}/>
         )}
 
         {/* ══ WASTE LOG ══ */}
-        {(tab==="Waste Log")&&(
+        {(activeTab==="Waste Log")&&(
           <WasteLog date={date} me={me} zoho={zoho} showFlash={showFlash} S={S} recipes={recipesWithIngs}/>
         )}
 
         {/* ══ SOPs ══ */}
-        {(tab==="SOPs")&&isAdmin&&(
+        {(activeTab==="SOPs")&&(
           <SOPs S={S} showFlash={showFlash}/>
         )}
 
         {/* ══ RECEIPTS ══ */}
-        {(tab==="Receipts")&&isAdmin&&(
+        {(activeTab==="Receipts")&&(
           <Receipts S={S} showFlash={showFlash} zoho={zoho}/>
         )}
 
         {/* ══ EXPORT ══ */}
-        {(tab==="Export")&&isAdmin&&(
+        {(activeTab==="Export")&&(
           <ExportPanel
             S={S} date={date}
             M={M} employees={employees}
@@ -1271,14 +1426,14 @@ export default function PhyllisOps(){
 }
 
 // ── Add ingredient to recipe sub-component ──
-function AddIngToRecipe({recipe,costs,onAdd}){
-  const [selId,setSel]=useState(INGREDIENTS[0].id);
+function AddIngToRecipe({recipe,costs,onAdd,ingredients}){
+  const [selId,setSel]=useState(ingredients[0]?.id||"");
   const [qty,setQty]=useState("");
   return(
     <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap",padding:"10px 16px",background:"#0e100e",borderTop:"1px solid #1e2a1e"}}>
       <span style={{fontSize:"11px",color:"#5a8a5a"}}>+ Add ingredient:</span>
       <select value={selId} onChange={e=>setSel(e.target.value)} style={{flex:1,minWidth:"160px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"5px 8px",fontSize:"12px",borderRadius:"2px",outline:"none"}}>
-        {INGREDIENTS.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+        {ingredients.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
       </select>
       <input type="number" min="0" step="0.001" value={qty} onChange={e=>setQty(e.target.value)} placeholder="qty"
         style={{width:"64px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#c8a96e",padding:"5px 8px",fontSize:"12px",borderRadius:"2px",outline:"none"}}/>
@@ -1329,7 +1484,7 @@ function TempLog({date,me,zoho,showFlash,S}){
       }
       setSaved(true);
       showFlash("Temp log saved to Zoho ✓");
-    }catch(e){showFlash("Save error: "+e.message);}
+    }catch(e){showFlash("Save error");}
     setLoading(false);
   };
 
@@ -1580,6 +1735,270 @@ function WasteLog({date,me,zoho,showFlash,S,recipes}){
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════
+// KITCHEN ORDER LIST COMPONENT
+// ══════════════════════════════════════
+function KitchenOrderList({ S, me, zoho, showFlash, ingredients }) {
+  const today = new Date().toISOString().split("T")[0];
+  const blankRow = { item: "", qty: "", unit: "lb", needed_by: today, notes: "" };
+  const [rows, setRows] = useState([
+    { item: "Chicken Breast", qty: "1", unit: "bag", needed_by: today, notes: "Prep for brunch" },
+    { item: "Eggs (large)", qty: "2", unit: "case", needed_by: today, notes: "Low stock" },
+    { item: "Heavy Cream", qty: "3", unit: "qt", needed_by: today, notes: "Sauce prep" },
+  ]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [picker, setPicker] = useState(null);
+  const [priceLoading, setPriceLoading] = useState(false);
+
+  const requester = me?.isAdmin ? "Satya" : `${me?.firstName || ""} ${me?.lastName || ""}`.trim() || "Staff";
+  const units = ["lb", "case", "qt", "gal", "bag", "box", "each", "pack", "doz"];
+  const parItemNames = INGREDIENTS.map(ing => ing.name);
+  const applyItem = (idx, value) => {
+    const match = INGREDIENTS.find(ing => ing.name.toLowerCase() === value.trim().toLowerCase());
+    setRows(p => p.map((r, i) => i === idx
+      ? { ...r, item: value, unit: match ? orderUnitFromParUnit(match.unit) : r.unit }
+      : r
+    ));
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await zoho("getAll", "Kitchen_Orders");
+        setOrders(asArray(data));
+      } catch (e) {
+        console.error("Kitchen orders load error", e);
+        showFlash("Kitchen Order List form/report not found in Zoho yet");
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const submitOrders = async () => {
+    const valid = rows.filter(r => r.item.trim() && Number(r.qty) > 0 && r.unit.trim());
+    if (!valid.length) {
+      showFlash("Add at least one item and quantity");
+      return;
+    }
+    setSaving(true);
+    const localOrders = valid.map((row, idx) => ({
+      ID: `local-${Date.now()}-${idx}`,
+      requested_by: requester,
+      item: row.item.trim(),
+      qty: Number(row.qty),
+      unit: row.unit.trim(),
+      needed_by: row.needed_by || today,
+      notes: row.notes.trim(),
+      status: "Saving",
+    }));
+    setOrders(p => [...localOrders, ...p]);
+    setRows([{ ...blankRow }]);
+
+    let failed = 0;
+    for (const order of localOrders) {
+      try {
+        const res = await zoho("create", "Kitchen_Orders", {
+          data: { ...order, status: "Requested" },
+        });
+        const savedId = res.data?.ID || order.ID;
+        setOrders(p => p.map(o => o.ID === order.ID ? { ...o, ID: savedId, status: "Requested" } : o));
+      } catch (e) {
+        failed += 1;
+        console.error("Kitchen order save error", e);
+        setOrders(p => p.map(o => o.ID === order.ID ? { ...o, status: "Local Only" } : o));
+      }
+    }
+
+    if (failed) {
+      showFlash("Order shown below, but Zoho save failed — check Kitchen Order List field types");
+    } else {
+      showFlash("Kitchen order submitted ✓");
+    }
+    setSaving(false);
+  };
+
+  const openRates = async (order) => {
+    setPicker({ order, suppliers: [], error: "" });
+    setPriceLoading(true);
+    try {
+      const res = await fetch("/api/price-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ingredient: order.item, unit: order.unit, yourCost: 0 }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setPicker({ order, suppliers: asArray(data.suppliers), error: "" });
+    } catch (e) {
+      setPicker({ order, suppliers: [], error: e.message || "Could not estimate rates" });
+    }
+    setPriceLoading(false);
+  };
+
+  const selectSupplier = async (supplier) => {
+    const order = picker.order;
+    const rate = supplier.price > 0 ? `$${Number(supplier.price).toFixed(2)}/${order.unit}` : "Call";
+    const updated = { ...order, recommendation: supplier.name, rate };
+    setOrders(p => p.map(o => (o.ID || o.id) === (order.ID || order.id) ? updated : o));
+    setPicker(null);
+    try {
+      await zoho("update", "Kitchen_Orders", {
+        recordId: order.ID || order.id,
+        data: { recommendation: supplier.name, rate, status: "Priced" },
+      });
+      showFlash("Store and rate saved ✓");
+    } catch (e) {
+      showFlash("Rate selected locally — Zoho save failed");
+    }
+  };
+
+  const storeSummary = orders.reduce((acc, o) => {
+    if (!o.recommendation) return acc;
+    acc[o.recommendation] = (acc[o.recommendation] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      <div style={{ ...S.lbl, marginBottom: "16px" }}>Kitchen Order List</div>
+
+      <div style={{ ...S.card, padding: "18px", marginBottom: "22px" }}>
+        <div style={{ ...S.lbl, ...S.amber, marginBottom: "12px" }}>Chef Entry</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "760px" }}>
+            <thead>
+              <tr>{["Item", "Qty", "Unit", "Needed By", "Notes", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <tr key={idx} style={{ borderTop: idx ? "1px solid #1a1916" : "none" }}>
+                  <td style={S.td}>
+                    <input value={row.item} list="kitchen-order-par-items" onChange={e => applyItem(idx, e.target.value)}
+                      placeholder="Select PAR item" style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
+                  </td>
+                  <td style={S.td}>
+                    <input type="number" min="0" step="0.01" value={row.qty} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, qty: e.target.value } : r))}
+                      style={{ ...S.inp, width: "80px", color: "#c8a96e" }} />
+                  </td>
+                  <td style={S.td}>
+                    <select value={row.unit} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, unit: e.target.value } : r))}
+                      style={{ ...S.inp, width: "95px" }}>
+                      {units.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </td>
+                  <td style={S.td}>
+                    <input type="date" value={row.needed_by} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, needed_by: e.target.value } : r))}
+                      style={{ ...S.inp, width: "140px" }} />
+                  </td>
+                  <td style={S.td}>
+                    <input value={row.notes} onChange={e => setRows(p => p.map((r, i) => i === idx ? { ...r, notes: e.target.value } : r))}
+                      placeholder="Prep for brunch" style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
+                  </td>
+                  <td style={S.td}>
+                    <button onClick={() => setRows(p => p.length === 1 ? [{ ...blankRow }] : p.filter((_, i) => i !== idx))}
+                      style={S.btnDanger}>Remove</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <datalist id="kitchen-order-par-items">
+            {parItemNames.map(name => <option key={name} value={name} />)}
+          </datalist>
+        </div>
+        <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
+          <button onClick={() => setRows(p => [...p, { ...blankRow }])} style={S.btnSm}>+ Add Item</button>
+          <button onClick={submitOrders} disabled={saving} style={S.btn}>{saving ? "Submitting..." : "Submit Order"}</button>
+        </div>
+      </div>
+
+      {Object.keys(storeSummary).length > 0 && (
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+          {Object.entries(storeSummary).map(([store, count]) => (
+            <span key={store} style={{ background: "#0a160a", border: "1px solid #1a3a1a", color: "#7eb87e", padding: "6px 10px", fontSize: "12px" }}>
+              {store}: {count} item{count === 1 ? "" : "s"}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ ...S.card, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>{["Requested By", "Item", "Qty", "Unit", "Recommendation", "Rate", "Status"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} style={{ ...S.td, color: "#555" }}>Loading kitchen orders...</td></tr>
+            ) : orders.length === 0 ? (
+              <tr><td colSpan={7} style={{ ...S.td, color: "#555" }}>No kitchen orders yet.</td></tr>
+            ) : orders.map((order, idx) => (
+              <tr key={order.ID || idx} style={{ borderTop: idx ? "1px solid #1a1916" : "none" }}>
+                <td style={S.td}>{order.requested_by || "Staff"}</td>
+                <td style={{ ...S.td, color: "#e8dfc8", fontWeight: "600" }}>{order.item}</td>
+                <td style={{ ...S.td, ...S.amber }}>{order.qty}</td>
+                <td style={S.td}>{order.unit}</td>
+                <td style={S.td}>
+                  <button onClick={() => openRates(order)} style={{ ...S.btnSm, background: order.recommendation ? "#0e1e0e" : "#1e2820" }}>
+                    {order.recommendation || "Select store"}
+                  </button>
+                </td>
+                <td style={{ ...S.td, color: order.rate ? "#7eb87e" : "#555", fontWeight: order.rate ? "700" : "400" }}>
+                  {order.rate || "Rate from selected store"}
+                </td>
+                <td style={{ ...S.td, color: order.status === "Local Only" ? "#c07070" : order.status === "Saving" ? "#c8a96e" : "#666", fontSize: "12px" }}>
+                  {order.status || "Requested"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {picker && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, padding: "20px" }}>
+          <div style={{ ...S.card, width: "560px", maxWidth: "100%", padding: "18px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "14px" }}>
+              <div>
+                <div style={{ ...S.lbl, ...S.amber, marginBottom: "5px" }}>Smart Store Rates</div>
+                <div style={{ fontSize: "15px", color: "#e8dfc8", fontWeight: "700" }}>
+                  {picker.order.item} · {picker.order.qty} {picker.order.unit}
+                </div>
+              </div>
+              <button onClick={() => setPicker(null)} style={S.btnDanger}>Close</button>
+            </div>
+            {priceLoading ? (
+              <div style={{ color: "#555", padding: "22px" }}>Checking estimated store rates...</div>
+            ) : picker.error ? (
+              <div style={{ color: "#c07070", padding: "12px", background: "#1a0a0a", border: "1px solid #3a1e1e" }}>{picker.error}</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>{["Store", "Rate", "Est. Total", "Note"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {picker.suppliers.map((s, idx) => {
+                    const price = Number(s.price || 0);
+                    return (
+                      <tr key={s.name || idx} onClick={() => selectSupplier(s)}
+                        style={{ borderTop: idx ? "1px solid #1a1916" : "none", cursor: "pointer", background: s.recommended ? "#0e1e0e" : "transparent" }}>
+                        <td style={{ ...S.td, color: s.recommended ? "#a0d4a0" : "#d4c9b8", fontWeight: "700" }}>{s.name}</td>
+                        <td style={{ ...S.td, ...S.amber }}>{price > 0 ? `$${price.toFixed(2)}/${picker.order.unit}` : "Call"}</td>
+                        <td style={{ ...S.td, color: "#7eb87e" }}>{price > 0 ? `$${(price * Number(picker.order.qty || 0)).toFixed(2)}` : "Call"}</td>
+                        <td style={{ ...S.td, color: "#666", fontSize: "12px" }}>{s.recommended ? "Best price. " : ""}{s.note}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1966,9 +2385,7 @@ function RoleTemplates({ S, showFlash, employees, setEmps }) {
 
   const ALL_MODS = [
     "Dashboard","PAR Entry","Ingredient Costs","Recipes","Sales Entry",
-    "Staff Hours","Analytics","COGS Report","Employees","Role Templates",
-    "My Schedule","Clock In/Out","My Timesheet","Time Off",
-    "Scheduling","Time Off Requests",
+    "Staff Hours","Kitchen Order List","Analytics","COGS Report","Employees","Role Templates",
     "Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"
   ];
 
@@ -2223,703 +2640,3 @@ function RoleTemplates({ S, showFlash, employees, setEmps }) {
   );
 }
 
-// ══════════════════════════════════════
-// MY SCHEDULE COMPONENT
-// ══════════════════════════════════════
-function MySchedule({ S, me, shifts }) {
-  const [schedule, setSchedule] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [weekOffset, setWeekOffset] = useState(0);
-
-  const getWeekDates = (offset = 0) => {
-    const now = new Date();
-    const day = now.getDay();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - day + 1 + offset * 7);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    return {
-      start: monday.toISOString().split("T")[0],
-      end: sunday.toISOString().split("T")[0],
-      label: `${monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
-    };
-  };
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { start, end } = getWeekDates(weekOffset);
-      const data = await shifts("getMySchedule", {
-        employeeId: me?.shiftsEmployeeId,
-        startDate: start,
-        endDate: end,
-      });
-      setSchedule(Array.isArray(data) ? data : []);
-      setLoading(false);
-    })();
-  }, [weekOffset, me?.shiftsEmployeeId]);
-
-  const week = getWeekDates(weekOffset);
-  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-  const formatTime = (iso) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-  };
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <div style={{ ...S.lbl }}>My Schedule</div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button onClick={() => setWeekOffset(p => p - 1)} style={{ ...S.btnSm, padding: "4px 10px" }}>◀</button>
-          <span style={{ fontSize: "13px", color: "#c8a96e", minWidth: "200px", textAlign: "center" }}>{week.label}</span>
-          <button onClick={() => setWeekOffset(p => p + 1)} style={{ ...S.btnSm, padding: "4px 10px" }}>▶</button>
-          {weekOffset !== 0 && (
-            <button onClick={() => setWeekOffset(0)} style={{ ...S.btnSm, fontSize: "10px" }}>This Week</button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ color: "#555", padding: "32px", textAlign: "center" }}>Loading schedule from Zoho Shifts…</div>
-      ) : schedule.length === 0 ? (
-        <div style={{ ...S.card, padding: "40px", textAlign: "center", color: "#444" }}>
-          <div style={{ fontSize: "32px", marginBottom: "12px" }}>📅</div>
-          <div style={{ fontSize: "14px", color: "#666" }}>No shifts scheduled for this week</div>
-          <div style={{ fontSize: "12px", color: "#444", marginTop: "6px" }}>Check with your manager if you expected to be scheduled</div>
-        </div>
-      ) : (
-        <div style={{ ...S.card, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              {["Date", "Day", "Start", "End", "Hours", "Position", "Location"].map(h =>
-                <th key={h} style={S.th}>{h}</th>
-              )}
-            </tr></thead>
-            <tbody>
-              {schedule.map((shift, idx) => {
-                const start = new Date(shift.start_time || shift.start_datetime || "");
-                const end   = new Date(shift.end_time   || shift.end_datetime   || "");
-                const hrs   = (end - start) / 3600000;
-                return (
-                  <tr key={shift.id || idx} style={{ borderTop: idx > 0 ? "1px solid #1a1916" : "none" }}>
-                    <td style={S.td}>{start.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td>
-                    <td style={{ ...S.td, color: "#888" }}>{DAYS[start.getDay() === 0 ? 6 : start.getDay() - 1]}</td>
-                    <td style={{ ...S.td, color: "#7eb87e" }}>{formatTime(shift.start_time || shift.start_datetime)}</td>
-                    <td style={{ ...S.td, color: "#c07070" }}>{formatTime(shift.end_time || shift.end_datetime)}</td>
-                    <td style={{ ...S.td, color: "#c8a96e" }}>{isNaN(hrs) ? "—" : `${hrs.toFixed(1)}h`}</td>
-                    <td style={{ ...S.td, fontSize: "12px", color: "#888" }}>{shift.position_name || shift.position || "—"}</td>
-                    <td style={{ ...S.td, fontSize: "12px", color: "#555" }}>{shift.location_name || shift.location || "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════
-// CLOCK IN/OUT COMPONENT
-// ══════════════════════════════════════
-function ClockInOut({ S, me, shifts, showFlash }) {
-  const [status, setStatus]     = useState(null); // "in" | "out" | null
-  const [activeEntry, setActive] = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [working, setWorking]   = useState(false);
-  const [elapsed, setElapsed]   = useState(0);
-
-  useEffect(() => {
-    (async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const entries = await shifts("getTimesheets", {
-        employeeId: me?.shiftsEmployeeId,
-        startDate: today,
-        endDate: today,
-      });
-      const open = (entries || []).find(e => e.start_time && !e.end_time);
-      if (open) { setStatus("in"); setActive(open); }
-      else setStatus("out");
-      setLoading(false);
-    })();
-  }, [me?.shiftsEmployeeId]);
-
-  useEffect(() => {
-    if (status !== "in" || !activeEntry) return;
-    const start = new Date(activeEntry.start_time).getTime();
-    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, [status, activeEntry]);
-
-  const formatElapsed = (secs) => {
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  };
-
-  const doClock = async () => {
-    if (!me?.shiftsEmployeeId) {
-      showFlash("Your Shifts employee ID is not set. Contact admin.");
-      return;
-    }
-    setWorking(true);
-    try {
-      if (status === "out") {
-        const res = await shifts("clockIn", { employeeId: me.shiftsEmployeeId });
-        if (res.time_entry || res.id || res.ID) {
-          setActive(res.time_entry || res);
-          setStatus("in");
-          setElapsed(0);
-          showFlash("Clocked in ✓");
-        } else {
-          showFlash("Clock in failed — " + (res.message || "try again"));
-        }
-      } else {
-        const entryId = activeEntry?.id || activeEntry?.ID;
-        const res = await shifts("clockOut", { timesheetId: entryId });
-        if (res.time_entry || res.id || res.ID) {
-          setStatus("out");
-          setActive(null);
-          showFlash("Clocked out ✓");
-        } else {
-          showFlash("Clock out failed — " + (res.message || "try again"));
-        }
-      }
-    } catch (e) {
-      showFlash("Error: " + e.message);
-    }
-    setWorking(false);
-  };
-
-  if (loading) return <div style={{ color: "#555", padding: "32px", textAlign: "center" }}>Checking clock status…</div>;
-
-  const isIn = status === "in";
-  const clockedInAt = activeEntry?.start_time ? new Date(activeEntry.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : null;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "40px" }}>
-      <div style={{ ...S.card, padding: "40px 48px", textAlign: "center", maxWidth: "400px", width: "100%" }}>
-        <div style={{ fontSize: "48px", marginBottom: "16px" }}>{isIn ? "🟢" : "⚪"}</div>
-        <div style={{ fontSize: "18px", color: "#e8dfc8", fontWeight: "700", marginBottom: "6px" }}>
-          {me?.firstName} {me?.lastName}
-        </div>
-        <div style={{ fontSize: "12px", color: "#555", marginBottom: "24px" }}>{me?.designation}</div>
-
-        {isIn && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "36px", fontFamily: "monospace", color: "#c8a96e", letterSpacing: "2px" }}>
-              {formatElapsed(elapsed)}
-            </div>
-            <div style={{ fontSize: "11px", color: "#555", marginTop: "6px" }}>
-              Clocked in at {clockedInAt}
-            </div>
-          </div>
-        )}
-
-        {!isIn && (
-          <div style={{ fontSize: "13px", color: "#555", marginBottom: "24px" }}>
-            You are currently clocked out
-          </div>
-        )}
-
-        <button onClick={doClock} disabled={working} style={{
-          ...S.btn,
-          width: "100%",
-          padding: "16px",
-          fontSize: "16px",
-          background: isIn ? "#3a1e1e" : "#c8a96e",
-          color: isIn ? "#c07070" : "#0c0b09",
-          border: isIn ? "1px solid #5a2e2e" : "none",
-        }}>
-          {working ? "…" : isIn ? "⏹ Clock Out" : "▶ Clock In"}
-        </button>
-
-        {!me?.shiftsEmployeeId && (
-          <div style={{ marginTop: "16px", fontSize: "11px", color: "#8a5555", background: "#1a0a0a", border: "1px solid #3a1e1e", borderRadius: "3px", padding: "10px" }}>
-            ⚠ Your Shifts Employee ID is not configured. Ask your admin to set it in the Employees tab.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════
-// MY TIMESHEET COMPONENT
-// ══════════════════════════════════════
-function MyTimesheet({ S, me, shifts }) {
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [range, setRange]     = useState("week");
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const now = new Date();
-      let startDate, endDate = now.toISOString().split("T")[0];
-      if (range === "week") {
-        const d = new Date(now); d.setDate(d.getDate() - 7);
-        startDate = d.toISOString().split("T")[0];
-      } else if (range === "month") {
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-      } else {
-        const d = new Date(now); d.setDate(d.getDate() - 14);
-        startDate = d.toISOString().split("T")[0];
-      }
-      const data = await shifts("getTimesheets", {
-        employeeId: me?.shiftsEmployeeId,
-        startDate, endDate,
-      });
-      setEntries(Array.isArray(data) ? data : []);
-      setLoading(false);
-    })();
-  }, [range, me?.shiftsEmployeeId]);
-
-  const totalHours = entries.reduce((sum, e) => {
-    if (!e.start_time || !e.end_time) return sum;
-    return sum + (new Date(e.end_time) - new Date(e.start_time)) / 3600000;
-  }, 0);
-
-  const fmt = (iso) => {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-  };
-  const fmtDate = (iso) => {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-  };
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <div style={{ ...S.lbl }}>My Timesheet</div>
-        <div style={{ display: "flex", gap: "6px" }}>
-          {["week", "2weeks", "month"].map(r => (
-            <button key={r} onClick={() => setRange(r)} style={{
-              ...S.btnSm, background: range === r ? "#2e4830" : "#1e2820",
-              color: range === r ? "#a0d4a0" : "#7eb87e",
-            }}>
-              {r === "week" ? "7 Days" : r === "2weeks" ? "14 Days" : "This Month"}
-            </button>
-          ))}
-        </div>
-        <div style={{ marginLeft: "auto", fontSize: "13px", color: "#c8a96e", fontWeight: "700" }}>
-          Total: {totalHours.toFixed(1)}h
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ color: "#555", padding: "32px", textAlign: "center" }}>Loading timesheet…</div>
-      ) : entries.length === 0 ? (
-        <div style={{ ...S.card, padding: "40px", textAlign: "center", color: "#444" }}>No timesheet entries found for this period</div>
-      ) : (
-        <div style={{ ...S.card, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              {["Date", "Clock In", "Clock Out", "Hours", "Status"].map(h =>
-                <th key={h} style={S.th}>{h}</th>
-              )}
-            </tr></thead>
-            <tbody>
-              {entries.map((e, idx) => {
-                const hrs = e.start_time && e.end_time
-                  ? ((new Date(e.end_time) - new Date(e.start_time)) / 3600000).toFixed(1)
-                  : null;
-                const open = e.start_time && !e.end_time;
-                return (
-                  <tr key={e.id || idx} style={{ borderTop: idx > 0 ? "1px solid #1a1916" : "none" }}>
-                    <td style={S.td}>{fmtDate(e.start_time)}</td>
-                    <td style={{ ...S.td, color: "#7eb87e" }}>{fmt(e.start_time)}</td>
-                    <td style={{ ...S.td, color: open ? "#c8a96e" : "#c07070" }}>{open ? "Active" : fmt(e.end_time)}</td>
-                    <td style={{ ...S.td, color: "#c8a96e", fontWeight: "600" }}>{hrs ? `${hrs}h` : "—"}</td>
-                    <td style={{ ...S.td, fontSize: "11px" }}>
-                      <span style={{ background: open ? "#1e2a0a" : "#0a0a0a", border: `1px solid ${open ? "#4a7a1a" : "#2e2b26"}`,
-                        color: open ? "#8aca4a" : "#555", padding: "2px 8px", borderRadius: "10px" }}>
-                        {open ? "Clocked In" : "Complete"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════
-// TIME OFF COMPONENT
-// ══════════════════════════════════════
-function TimeOff({ S, me, shifts, showFlash }) {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [form, setForm]         = useState({ start_date: "", end_date: "", reason: "", type: "Vacation" });
-  const [submitting, setSubmitting] = useState(false);
-
-  const TIME_OFF_TYPES = ["Vacation", "Sick Leave", "Personal", "Unpaid Leave", "Other"];
-
-  useEffect(() => {
-    (async () => {
-      const data = await shifts("getTimeOff", { employeeId: me?.shiftsEmployeeId });
-      setRequests(Array.isArray(data) ? data : []);
-      setLoading(false);
-    })();
-  }, [me?.shiftsEmployeeId]);
-
-  const submitRequest = async () => {
-    if (!form.start_date || !form.end_date) { showFlash("Start and end date required"); return; }
-    setSubmitting(true);
-    const res = await shifts("requestTimeOff", {
-      data: {
-        employee_id: me?.shiftsEmployeeId,
-        start_date: form.start_date,
-        end_date: form.end_date,
-        reason: form.reason,
-        type: form.type,
-      }
-    });
-    if (res.time_off_request || res.id || res.ID) {
-      setRequests(p => [res.time_off_request || res, ...p]);
-      setForm({ start_date: "", end_date: "", reason: "", type: "Vacation" });
-      showFlash("Time off request submitted ✓");
-    } else {
-      showFlash("Request failed — " + (res.message || "try again"));
-    }
-    setSubmitting(false);
-  };
-
-  const statusColor = (s) => s === "approved" ? "#7eb87e" : s === "denied" ? "#c07070" : "#c8a96e";
-
-  return (
-    <div>
-      <div style={{ ...S.card, padding: "20px", marginBottom: "24px" }}>
-        <div style={{ ...S.lbl, ...S.amber, marginBottom: "14px" }}>Request Time Off</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: "10px", marginBottom: "12px" }}>
-          <div>
-            <div style={{ ...S.lbl, marginBottom: "4px" }}>Start Date</div>
-            <input type="date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
-              style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
-          </div>
-          <div>
-            <div style={{ ...S.lbl, marginBottom: "4px" }}>End Date</div>
-            <input type="date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))}
-              style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
-          </div>
-          <div>
-            <div style={{ ...S.lbl, marginBottom: "4px" }}>Type</div>
-            <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
-              style={{ ...S.inp, width: "100%", boxSizing: "border-box" }}>
-              {TIME_OFF_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{ ...S.lbl, marginBottom: "4px" }}>Reason (optional)</div>
-            <input value={form.reason} onChange={e => setForm(p => ({ ...p, reason: e.target.value }))}
-              placeholder="Brief note…"
-              style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
-          </div>
-        </div>
-        <button onClick={submitRequest} style={S.btn} disabled={submitting}>
-          {submitting ? "Submitting…" : "Submit Request"}
-        </button>
-      </div>
-
-      <div style={{ ...S.lbl, marginBottom: "12px" }}>My Requests</div>
-      {loading ? (
-        <div style={{ color: "#555", padding: "24px" }}>Loading…</div>
-      ) : requests.length === 0 ? (
-        <div style={{ ...S.card, padding: "32px", textAlign: "center", color: "#444" }}>No time off requests yet</div>
-      ) : (
-        <div style={{ ...S.card, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              {["Start", "End", "Type", "Reason", "Status"].map(h => <th key={h} style={S.th}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {requests.map((r, idx) => (
-                <tr key={r.id || idx} style={{ borderTop: idx > 0 ? "1px solid #1a1916" : "none" }}>
-                  <td style={S.td}>{r.start_date}</td>
-                  <td style={S.td}>{r.end_date}</td>
-                  <td style={{ ...S.td, fontSize: "12px", color: "#888" }}>{r.type || r.leave_type || "—"}</td>
-                  <td style={{ ...S.td, fontSize: "12px", color: "#666" }}>{r.reason || "—"}</td>
-                  <td style={{ ...S.td }}>
-                    <span style={{ fontSize: "11px", fontWeight: "600", color: statusColor(r.status), textTransform: "capitalize" }}>
-                      {r.status || "Pending"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════
-// SCHEDULING COMPONENT (Admin)
-// ══════════════════════════════════════
-function Scheduling({ S, employees, shifts, showFlash }) {
-  const [schedule, setSchedule] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ employee_id: "", start_time: "", end_time: "", notes: "" });
-  const [saving, setSaving] = useState(false);
-
-  const getWeekDates = (offset = 0) => {
-    const now = new Date();
-    const day = now.getDay();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - day + 1 + offset * 7);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    return {
-      start: monday.toISOString().split("T")[0],
-      end: sunday.toISOString().split("T")[0],
-      label: `${monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
-    };
-  };
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { start, end } = getWeekDates(weekOffset);
-      const data = await shifts("getAllShifts", { startDate: start, endDate: end });
-      setSchedule(Array.isArray(data) ? data : []);
-      setLoading(false);
-    })();
-  }, [weekOffset]);
-
-  const week = getWeekDates(weekOffset);
-
-  const createShift = async () => {
-    if (!form.employee_id || !form.start_time || !form.end_time) {
-      showFlash("Employee, start and end time required");
-      return;
-    }
-    setSaving(true);
-    const res = await shifts("createShift", {
-      data: {
-        employee_ids: [form.employee_id],
-        start_time: new Date(form.start_time).toISOString(),
-        end_time: new Date(form.end_time).toISOString(),
-        notes: form.notes,
-      }
-    });
-    if (res.shift || res.id || res.ID) {
-      showFlash("Shift created ✓");
-      setShowForm(false);
-      setForm({ employee_id: "", start_time: "", end_time: "", notes: "" });
-      // Reload
-      const { start, end } = getWeekDates(weekOffset);
-      const data = await shifts("getAllShifts", { startDate: start, endDate: end });
-      setSchedule(Array.isArray(data) ? data : []);
-    } else {
-      showFlash("Failed to create shift — " + (res.message || "check Shifts settings"));
-    }
-    setSaving(false);
-  };
-
-  const deleteShift = async (shiftId) => {
-    if (!window.confirm("Delete this shift?")) return;
-    await shifts("deleteShift", { shiftId });
-    setSchedule(p => p.filter(s => (s.id || s.ID) !== shiftId));
-    showFlash("Shift deleted ✓");
-  };
-
-  const fmt = (iso) => {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
-  };
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <div style={{ ...S.lbl }}>Schedule Management</div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button onClick={() => setWeekOffset(p => p - 1)} style={{ ...S.btnSm, padding: "4px 10px" }}>◀</button>
-          <span style={{ fontSize: "13px", color: "#c8a96e", minWidth: "200px", textAlign: "center" }}>{week.label}</span>
-          <button onClick={() => setWeekOffset(p => p + 1)} style={{ ...S.btnSm, padding: "4px 10px" }}>▶</button>
-        </div>
-        <button onClick={() => setShowForm(p => !p)} style={S.btn}>
-          {showForm ? "Cancel" : "+ Add Shift"}
-        </button>
-      </div>
-
-      {showForm && (
-        <div style={{ ...S.card, padding: "20px", marginBottom: "20px" }}>
-          <div style={{ ...S.lbl, ...S.amber, marginBottom: "14px" }}>New Shift</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "10px", marginBottom: "12px" }}>
-            <div>
-              <div style={{ ...S.lbl, marginBottom: "4px" }}>Employee</div>
-              <select value={form.employee_id} onChange={e => setForm(p => ({ ...p, employee_id: e.target.value }))}
-                style={{ ...S.inp, width: "100%", boxSizing: "border-box" }}>
-                <option value="">— Select employee —</option>
-                {employees.filter(e => e.shifts_employee_id || e.Shifts_Employee_ID).map(e => (
-                  <option key={e.ID || e.id} value={e.shifts_employee_id || e.Shifts_Employee_ID}>
-                    {e.first_name || e.First_Name} {e.last_name || e.Last_Name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div style={{ ...S.lbl, marginBottom: "4px" }}>Start Date & Time</div>
-              <input type="datetime-local" value={form.start_time} onChange={e => setForm(p => ({ ...p, start_time: e.target.value }))}
-                style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
-            </div>
-            <div>
-              <div style={{ ...S.lbl, marginBottom: "4px" }}>End Date & Time</div>
-              <input type="datetime-local" value={form.end_time} onChange={e => setForm(p => ({ ...p, end_time: e.target.value }))}
-                style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
-            </div>
-            <div>
-              <div style={{ ...S.lbl, marginBottom: "4px" }}>Notes</div>
-              <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
-                placeholder="Optional notes…"
-                style={{ ...S.inp, width: "100%", boxSizing: "border-box" }} />
-            </div>
-          </div>
-          <button onClick={createShift} style={S.btn} disabled={saving}>
-            {saving ? "Creating…" : "Create Shift"}
-          </button>
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ color: "#555", padding: "32px", textAlign: "center" }}>Loading schedule from Zoho Shifts…</div>
-      ) : schedule.length === 0 ? (
-        <div style={{ ...S.card, padding: "40px", textAlign: "center", color: "#444" }}>
-          No shifts scheduled for this week. Click "+ Add Shift" to create one.
-        </div>
-      ) : (
-        <div style={{ ...S.card, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              {["Employee", "Start", "End", "Hours", "Notes", "Actions"].map(h =>
-                <th key={h} style={S.th}>{h}</th>
-              )}
-            </tr></thead>
-            <tbody>
-              {schedule.map((shift, idx) => {
-                const start = new Date(shift.start_time || shift.start_datetime || "");
-                const end   = new Date(shift.end_time   || shift.end_datetime   || "");
-                const hrs   = (end - start) / 3600000;
-                return (
-                  <tr key={shift.id || idx} style={{ borderTop: idx > 0 ? "1px solid #1a1916" : "none" }}>
-                    <td style={S.td}>{shift.employee_name || shift.employee?.name || "—"}</td>
-                    <td style={{ ...S.td, color: "#7eb87e", fontSize: "12px" }}>{fmt(shift.start_time || shift.start_datetime)}</td>
-                    <td style={{ ...S.td, color: "#c07070", fontSize: "12px" }}>{fmt(shift.end_time || shift.end_datetime)}</td>
-                    <td style={{ ...S.td, color: "#c8a96e" }}>{isNaN(hrs) ? "—" : `${hrs.toFixed(1)}h`}</td>
-                    <td style={{ ...S.td, fontSize: "12px", color: "#555" }}>{shift.notes || "—"}</td>
-                    <td style={{ padding: "4px 12px" }}>
-                      <button onClick={() => deleteShift(shift.id || shift.ID)} style={S.btnDanger}>Delete</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════
-// TIME OFF REQUESTS COMPONENT (Admin)
-// ══════════════════════════════════════
-function TimeOffRequests({ S, employees, shifts, showFlash }) {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [working, setWorking]   = useState("");
-
-  useEffect(() => {
-    (async () => {
-      const data = await shifts("getTimeOff", {});
-      setRequests(Array.isArray(data) ? data : []);
-      setLoading(false);
-    })();
-  }, []);
-
-  const updateStatus = async (timeOffId, status) => {
-    setWorking(timeOffId);
-    const res = await shifts("updateTimeOff", { data: { timeOffId, status } });
-    if (res.time_off_request || res.id || res.ID || res.code === 0) {
-      setRequests(p => p.map(r => (r.id || r.ID) === timeOffId ? { ...r, status } : r));
-      showFlash(`Request ${status} ✓`);
-    } else {
-      showFlash("Update failed — " + (res.message || "try again"));
-    }
-    setWorking("");
-  };
-
-  const statusColor = (s) => s === "approved" ? "#7eb87e" : s === "denied" ? "#c07070" : "#c8a96e";
-
-  if (loading) return <div style={{ color: "#555", padding: "32px" }}>Loading time off requests…</div>;
-
-  const pending = requests.filter(r => !r.status || r.status === "pending");
-  const resolved = requests.filter(r => r.status && r.status !== "pending");
-
-  return (
-    <div>
-      <div style={{ ...S.lbl, marginBottom: "16px" }}>
-        Time Off Requests — {pending.length} pending
-      </div>
-
-      {requests.length === 0 ? (
-        <div style={{ ...S.card, padding: "40px", textAlign: "center", color: "#444" }}>No time off requests</div>
-      ) : (
-        <div style={{ ...S.card, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              {["Employee", "Start", "End", "Type", "Reason", "Status", "Actions"].map(h =>
-                <th key={h} style={S.th}>{h}</th>
-              )}
-            </tr></thead>
-            <tbody>
-              {[...pending, ...resolved].map((r, idx) => {
-                const id = r.id || r.ID;
-                const isPending = !r.status || r.status === "pending";
-                return (
-                  <tr key={id || idx} style={{ borderTop: idx > 0 ? "1px solid #1a1916" : "none" }}>
-                    <td style={S.td}>{r.employee_name || r.employee?.name || "—"}</td>
-                    <td style={S.td}>{r.start_date}</td>
-                    <td style={S.td}>{r.end_date}</td>
-                    <td style={{ ...S.td, fontSize: "12px", color: "#888" }}>{r.type || r.leave_type || "—"}</td>
-                    <td style={{ ...S.td, fontSize: "12px", color: "#666" }}>{r.reason || "—"}</td>
-                    <td style={S.td}>
-                      <span style={{ fontSize: "11px", fontWeight: "600", color: statusColor(r.status), textTransform: "capitalize" }}>
-                        {r.status || "Pending"}
-                      </span>
-                    </td>
-                    <td style={{ padding: "4px 12px" }}>
-                      {isPending ? (
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          <button onClick={() => updateStatus(id, "approved")} disabled={!!working}
-                            style={{ ...S.btnSm, fontSize: "10px" }}>✓ Approve</button>
-                          <button onClick={() => updateStatus(id, "denied")} disabled={!!working}
-                            style={{ ...S.btnDanger, fontSize: "10px" }}>✗ Deny</button>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: "11px", color: "#444" }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}

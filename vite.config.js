@@ -1,7 +1,57 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+function localApiPlugin() {
+  return {
+    name: 'local-vercel-api',
+    configureServer(server) {
+      server.middlewares.use('/api', async (req, res, next) => {
+        try {
+          const requestUrl = new URL(req.url || '/', 'http://localhost');
+          const route = requestUrl.pathname.replace(/^\/+/, '');
+          const supported = new Set(['auth', 'employees', 'zoho', 'roles', 'price-check']);
+          if (!supported.has(route)) return next();
+
+          const runHandler = async (body = '') => {
+            try {
+              req.query = Object.fromEntries(requestUrl.searchParams.entries());
+              req.body = body ? JSON.parse(body) : {};
+
+              res.status = code => {
+                res.statusCode = code;
+                return res;
+              };
+              res.json = data => {
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(data));
+              };
+
+              const mod = await import(new URL(`./api/${route}.js?dev=${Date.now()}`, import.meta.url).href);
+              await mod.default(req, res);
+            } catch (error) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: error.message }));
+            }
+          };
+
+          if (req.method === 'GET' || req.method === 'OPTIONS') {
+            await runHandler();
+            return;
+          }
+
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => { runHandler(body); });
+        } catch {
+          next();
+        }
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), localApiPlugin()],
 })

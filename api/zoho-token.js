@@ -1,7 +1,20 @@
 // /api/zoho-token.js
 // Shared helper to get a fresh Zoho access token using refresh token
 
+let cachedAccessToken = "";
+let cachedAccessTokenExpiresAt = 0;
+
 export async function getZohoToken() {
+  if (cachedAccessToken && Date.now() < cachedAccessTokenExpiresAt) {
+    return cachedAccessToken;
+  }
+
+  const missing = ["ZOHO_REFRESH_TOKEN", "ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET"]
+    .filter((key) => !process.env[key]);
+  if (missing.length) {
+    throw new Error(`Missing Zoho environment variables: ${missing.join(", ")}`);
+  }
+
   const res = await fetch("https://accounts.zoho.com/oauth/v2/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -13,7 +26,12 @@ export async function getZohoToken() {
     }),
   });
   const data = await res.json();
-  return data.access_token;
+  if (!res.ok || !data.access_token) {
+    throw new Error(data.error_description || data.error || "Could not refresh Zoho access token");
+  }
+  cachedAccessToken = data.access_token;
+  cachedAccessTokenExpiresAt = Date.now() + Math.max(60, (Number(data.expires_in) || 3600) - 120) * 1000;
+  return cachedAccessToken;
 }
 
 export const ZOHO_BASE = `https://creator.zoho.com/api/v2/${process.env.ZOHO_ACCOUNT_NAME}/phyllis-ops`;

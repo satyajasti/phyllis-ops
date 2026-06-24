@@ -1,54 +1,5 @@
-
-
-Share
-Lite
-Perfect! Here's the complete updated auth.js code ready to copy-paste:
-How to Update:
-Go to: https://github.com/satyajasti/phyllis-ops/blob/main/api/auth.js
-Click the pencil icon (Edit ) in the top right
-Select all the code (Ctrl+A or Cmd+A)
-Delete it
-Paste the new code from the attached file
-Scroll down and click "Commit changes"
-Add commit message: feat: add PIN login support for kitchen staff
-Click "Commit"
-Key Features of Updated Code:
-✅ PIN Login for Staff - Chef, Cook, Server, etc. can login with PIN
-✅ Zoho OAuth for Admins - Managers still use Zoho login
-✅ Module Access Control - Returns allowed modules from Employees table
-✅ Better Error Handling - Clear messages for invalid PIN or inactive employees
-✅ Automatic Field Detection - Works with different field name formats (Email, email, Email_Name, etc.)
-After Deployment:
-Add PIN field to Employees table in Zoho Creator
-Set PIN for each employee (e.g., 1234, 5678, 9012)
-Chef can login with PIN:
-Go to https://phyllis-ops.vercel.app/
-Click "ADMIN PIN" button
-Enter PIN: 1234
-✅ Logged in!
-Testing:
-Once deployed, test with:
-Chef PIN: 1234
-Cook PIN: 5678
-Admin PIN: satya (or your custom ZOHO_ADMIN_PIN )
-The code is ready in the attachment. Copy it and paste it into GitHub!
-Let me know once you've updated it and I can help troubleshoot if needed.
-phyllis_ops_auth_updated.js
-Code · 9.34 KB
-View all files in this task
-Task completed
-How was this result?
-Suggested follow-ups
-
-
-
-Cloud computers
-New
-
-phyllis_ops_auth_updated.js
 // /api/auth.js
-// Handles Zoho OAuth 2.0 login flow + PIN-based login for PhyllisOps staff access
-// Updated to support PIN login for kitchen staff who don't have Zoho accounts
+// Handles Zoho OAuth 2.0 login flow for PhyllisOps staff access
 
 import { getZohoToken, ZOHO_BASE } from "./zoho-token.js";
 
@@ -64,55 +15,146 @@ const SCOPES = [
   "ZohoCreator.report.READ",
   "ZohoCreator.report.UPDATE",
   "ZohoCreator.report.DELETE",
-  "ZohoShifts.schedules.READ",
-  "ZohoShifts.schedules.CREATE",
-  "ZohoShifts.schedules.UPDATE",
-  "ZohoShifts.schedules.DELETE",
-  "ZohoShifts.timesheets.READ",
-  "ZohoShifts.timesheets.CREATE",
-  "ZohoShifts.timesheets.UPDATE",
-  "ZohoShifts.timeoff.READ",
-  "ZohoShifts.timeoff.CREATE",
-  "ZohoShifts.timeoff.UPDATE",
-  "ZohoShifts.employees.READ",
-  "ZohoShifts.settings.READ",
   "openid",
   "email",
   "profile",
 ].join(",");
 
-// ─── Helper: Parse modules from Zoho Creator field ───
-function parseModules(modulesField) {
-  if (!modulesField) {
-    return ["Dashboard", "PAR Entry", "Sales Entry", "Staff Hours", "Temp Log", "Checklists", "Waste Log"];
+const DEFAULT_STAFF_MODULES = [
+  "Dashboard",
+  "PAR Entry",
+  "Sales Entry",
+  "Staff Hours",
+  "Kitchen Order List",
+  "Temp Log",
+  "Checklists",
+  "Waste Log",
+];
+
+const KITCHEN_ORDER_ROLES = [
+  "chef",
+  "cook",
+  "kitchen",
+  "prep",
+  "sous",
+  "expeditor",
+];
+
+let cachedEmployeeRecords = null;
+let cachedEmployeeRecordsAt = 0;
+
+function firstValue(record, keys, fallback = "") {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
   }
-  // Handle both comma-separated string and array formats
-  const modules = Array.isArray(modulesField) 
-    ? modulesField 
-    : modulesField.split(",").map(m => m.trim()).filter(Boolean);
-  return modules.length > 0 ? modules : ["Dashboard"];
+  return fallback;
 }
 
-// ─── Helper: Get employee from Zoho Creator by field ───
-async function getEmployeeByField(fieldName, fieldValue) {
-  try {
-    const creatorToken = await getZohoToken();
-    const encodedValue = encodeURIComponent(fieldValue);
-    
-    // Query the Employees_Report with the specified field
-    const empRes = await fetch(
-      `${ZOHO_BASE}/report/Employees_Report?criteria=${fieldName}%3D%22${encodedValue}%22&max_records=1`,
-      { headers: { Authorization: `Zoho-oauthtoken ${creatorToken}` } }
-    );
-    
-    const empData = await empRes.json();
-    const records = empData.data || [];
-    
-    return records.length > 0 ? records[0] : null;
-  } catch (error) {
-    console.error(`Error fetching employee by ${fieldName}:`, error);
-    return null;
+function stringValue(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object") {
+    return String(
+      value.display_value ??
+      value.value ??
+      value.name ??
+      ""
+    ).trim();
   }
+  return String(value).trim();
+}
+
+function parseModules(value) {
+  if (Array.isArray(value)) return value.map(String).map(m => m.trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(",").map(m => m.trim()).filter(Boolean);
+  return [];
+}
+
+function modulesForEmployee(modules, designation) {
+  const allowed = modules.length ? modules : DEFAULT_STAFF_MODULES;
+  const role = String(designation || "").toLowerCase();
+  if (KITCHEN_ORDER_ROLES.some(keyword => role.includes(keyword)) && !allowed.includes("Kitchen Order List")) {
+    return [...allowed, "Kitchen Order List"];
+  }
+  return allowed;
+}
+
+function normalizeEmployee(emp) {
+  const name = emp.Name || "";
+  const nameText = typeof name === "string" ? name : String(name.display_value || "").trim();
+  const parts = nameText.split(/\s+/).filter(Boolean);
+  const firstName = firstValue(emp, ["First_Name", "first_name"], typeof name === "object" ? name.first_name || parts[0] || "" : parts[0] || "");
+  const lastName = firstValue(emp, ["Last_Name", "last_name"], typeof name === "object" ? name.last_name || parts.slice(1).join(" ") : parts.slice(1).join(" "));
+  const allowedModules = parseModules(firstValue(emp, [
+    "Allowed_Modules",
+    "allowed_modules",
+    "Modules_Provided",
+    "modules_provided",
+  ]));
+  const designation = firstValue(emp, ["Designation", "designation", "Role_Name", "role_name"]);
+
+  return {
+    id: emp.ID,
+    email: firstValue(emp, ["Email", "email"]),
+    firstName,
+    lastName,
+    designation,
+    hourlyRate: parseFloat(firstValue(emp, ["Hourly_Rate", "hourly_rate", "salary"], 0)),
+    isAdmin: false,
+    allowedModules: modulesForEmployee(allowedModules, designation),
+    roleTemplate: firstValue(emp, ["Role_Template", "role_template"]),
+  };
+}
+
+function employeePin(emp) {
+  const direct = firstValue(emp, [
+    "PIN",
+    "Pin",
+    "pin",
+    "pinin",
+    "Pinin",
+    "PININ",
+    "Login_PIN",
+    "Login_Pin",
+    "Staff_PIN",
+    "Staff_Pin",
+    "Pin_Number",
+    "Password",
+    "password",
+  ]);
+  if (direct !== "") return stringValue(direct);
+
+  const dynamic = Object.entries(emp || {}).find(([key, value]) => {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return value !== undefined && value !== null && value !== "" &&
+      (normalizedKey.includes("pin") || normalizedKey.includes("password"));
+  });
+  return dynamic ? stringValue(dynamic[1]) : "";
+}
+
+function isEmployeeActive(emp) {
+  const raw = firstValue(emp, ["Is_Active", "is_active"], true);
+  if (typeof raw === "boolean") return raw;
+  const value = String(raw).trim().toLowerCase();
+  return !["false", "no", "inactive", "disabled", "0"].includes(value);
+}
+
+async function getEmployeeRecords() {
+  if (cachedEmployeeRecords && Date.now() - cachedEmployeeRecordsAt < 2 * 60 * 1000) {
+    return cachedEmployeeRecords;
+  }
+
+  const creatorToken = await getZohoToken();
+  const empRes = await fetch(`${ZOHO_BASE}/report/All_Employees?max_records=200`, {
+    headers: { Authorization: `Zoho-oauthtoken ${creatorToken}` },
+  });
+  const empData = await empRes.json();
+  if (!empRes.ok || (empData.code && String(empData.code) !== "3000")) {
+    throw new Error(empData.description || empData.message || "Could not load employees from Zoho Creator.");
+  }
+  cachedEmployeeRecords = empData.data || [];
+  cachedEmployeeRecordsAt = Date.now();
+  return cachedEmployeeRecords;
 }
 
 export default async function handler(req, res) {
@@ -203,24 +245,37 @@ export default async function handler(req, res) {
             designation: "Owner",
             isAdmin: true,
             allowedModules: ["ALL"],
-            shiftsEmployeeId: null,
           },
           accessToken: userAccessToken,
         });
       }
 
       // 4. Look up employee in Zoho Creator by email
-      const emp = await getEmployeeByField("Email", email);
+      const creatorToken = await getZohoToken();
+      const empRes = await fetch(
+        `${ZOHO_BASE}/report/Employees_Report?criteria=Email%3D%22${encodeURIComponent(email)}%22&max_records=1`,
+        { headers: { Authorization: `Zoho-oauthtoken ${creatorToken}` } }
+      );
+      const empData = await empRes.json();
+      const records = empData.data || [];
 
-      if (!emp) {
+      if (records.length === 0) {
+        // Fallback: try matching by name if email field not yet populated
         return res.status(403).json({
           error: "no_employee_record",
-          message: "Your account was not found in the system. Please use PIN login or contact your manager.",
+          message: "Your account was not found in the system. Please contact your manager.",
           email,
         });
       }
 
-      const allowedModules = parseModules(emp.Modules_Provided || emp.modules_provided);
+      const emp = records[0];
+      const designation = emp.Designation || emp.designation || emp.Role_Name || emp.role_name || "";
+      const allowedModules = modulesForEmployee(
+        emp.Allowed_Modules
+          ? emp.Allowed_Modules.split(",").map(m => m.trim()).filter(Boolean)
+          : [],
+        designation
+      );
 
       return res.status(200).json({
         success: true,
@@ -229,12 +284,11 @@ export default async function handler(req, res) {
           email,
           firstName: emp.First_Name || emp.first_name || "",
           lastName:  emp.Last_Name  || emp.last_name  || "",
-          designation: emp.Designation || emp.designation || emp.Role_Name || emp.role_name || "",
+          designation,
           hourlyRate:  parseFloat(emp.Hourly_Rate || emp.hourly_rate || 0),
           isAdmin: false,
           allowedModules,
           roleTemplate: emp.Role_Template || emp.role_template || "",
-          shiftsEmployeeId: emp.Shifts_Employee_ID || emp.shifts_employee_id || null,
         },
         accessToken: userAccessToken,
       });
@@ -246,71 +300,64 @@ export default async function handler(req, res) {
   }
 
   // ── POST /api/auth?action=verify-pin ──
-  // NEW: PIN-based login for kitchen staff (no Zoho account needed)
+  // Legacy PIN fallback for admin during transition
   if (action === "verify-pin" && req.method === "POST") {
-    const { pin } = req.body || {};
-    
-    if (!pin) {
-      return res.status(400).json({ error: "Missing PIN" });
+    const { employeeId, pin } = req.body || {};
+    if (!pin) return res.status(400).json({ error: "Missing PIN" });
+
+    const ADMIN_PIN = process.env.ZOHO_ADMIN_PIN || "satya";
+    if (!employeeId && pin === ADMIN_PIN) {
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: "admin",
+          firstName: "Satya",
+          lastName: "",
+          designation: "Owner",
+          isAdmin: true,
+          allowedModules: ["ALL"],
+        },
+      });
     }
 
+    if (!employeeId) return res.status(400).json({ error: "Missing employee" });
+
     try {
-      // 1. Check if this is the admin PIN
-      const ADMIN_PIN = process.env.ZOHO_ADMIN_PIN || "satya";
-      if (pin === ADMIN_PIN) {
-        return res.status(200).json({
-          success: true,
-          user: {
-            id: "admin",
-            firstName: "Satya",
-            lastName: "",
-            designation: "Owner",
-            isAdmin: true,
-            allowedModules: ["ALL"],
-            shiftsEmployeeId: null,
-          },
+      const emp = (await getEmployeeRecords()).find(record => String(record.ID) === String(employeeId));
+
+      if (!emp) {
+        return res.status(404).json({
+          error: "employee_not_found",
+          message: "Employee not found. Ask a manager to check the Zoho employee table.",
         });
       }
 
-      // 2. Look up employee in Zoho Creator by PIN
-      const emp = await getEmployeeByField("PIN", pin);
+      if (!isEmployeeActive(emp)) {
+        return res.status(403).json({
+          error: "inactive_employee",
+          message: "This employee is inactive. Please contact your manager.",
+        });
+      }
 
-      if (!emp) {
+      const storedPin = employeePin(emp);
+      if (!storedPin) {
+        return res.status(400).json({
+          error: "pin_not_configured",
+          message: "PIN is not set for this employee. Ask a manager to add a PIN in Zoho Creator.",
+        });
+      }
+
+      if (storedPin !== String(pin).trim()) {
         return res.status(401).json({
           error: "invalid_pin",
           message: "Invalid PIN. Please check and try again.",
         });
       }
 
-      // 3. Check if employee is active
-      const isActive = emp.Is_Active === true || emp.is_active === "true" || emp.Is_Active === "Choice 1";
-      if (!isActive) {
-        return res.status(403).json({
-          error: "inactive_employee",
-          message: "Your account is inactive. Please contact your manager.",
-        });
-      }
-
-      // 4. Parse allowed modules
-      const allowedModules = parseModules(emp.Modules_Provided || emp.modules_provided);
-
-      // 5. Return employee data
       return res.status(200).json({
         success: true,
-        user: {
-          id: emp.ID,
-          email: emp.Email || emp.email || "",
-          firstName: emp.First_Name || emp.first_name || "",
-          lastName:  emp.Last_Name  || emp.last_name  || "",
-          designation: emp.Designation || emp.designation || emp.Role_Name || emp.role_name || "",
-          hourlyRate:  parseFloat(emp.Hourly_Rate || emp.hourly_rate || 0),
-          isAdmin: false,
-          allowedModules,
-          roleTemplate: emp.Role_Template || emp.role_template || "",
-          shiftsEmployeeId: emp.Shifts_Employee_ID || emp.shifts_employee_id || null,
-        },
+        user: normalizeEmployee(emp),
       });
-
     } catch (e) {
       console.error("PIN verification error:", e);
       return res.status(500).json({ error: e.message });
@@ -319,4 +366,3 @@ export default async function handler(req, res) {
 
   return res.status(400).json({ error: "Unknown action" });
 }
-Connecting Bridge: Messaging Platform for IT Recruiters and Consultants - Manus

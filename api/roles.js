@@ -71,9 +71,9 @@ export default async function handler(req, res) {
         return res.status(200).json(d);
       }
 
-      // ── Update employee's email and shifts employee ID ──
+      // ── Update employee auth fields ──
       case "updateEmployeeAuth": {
-        // data = { email: "...", shifts_employee_id: "..." }
+        // data = { email: "...", pin: "..." }
         const r = await fetch(`${ZOHO_BASE}/report/Employees_Report/${recordId}`, {
           method: "PATCH",
           headers,

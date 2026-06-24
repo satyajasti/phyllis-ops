@@ -1,59 +1,85 @@
 // /api/employees.js
-// Fetch all employees for the login dropdown
+// Returns active employees for the staff login selector.
 
 import { getZohoToken, ZOHO_BASE } from "./zoho-token.js";
 
+let cachedEmployees = null;
+let cachedEmployeesAt = 0;
+
+function firstValue(record, keys, fallback = "") {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return fallback;
+}
+
+function employeeName(emp) {
+  const name = emp.Name || "";
+  if (typeof name === "string") return name.trim() || "Unnamed employee";
+  if (name.display_value) return String(name.display_value).trim() || "Unnamed employee";
+  const firstName = firstValue(emp, ["First_Name", "first_name"], name.first_name || "");
+  const lastName = firstValue(emp, ["Last_Name", "last_name"], name.last_name || "");
+  return `${firstName} ${lastName}`.trim() || "Unnamed employee";
+}
+
+function isActive(emp) {
+  const raw = firstValue(emp, ["Is_Active", "is_active"], true);
+  if (typeof raw === "boolean") return raw;
+  const value = String(raw).trim().toLowerCase();
+  return !["false", "no", "inactive", "disabled", "0"].includes(value);
+}
+
+function isZohoError(data) {
+  if (!data?.code) return false;
+  return String(data.code) !== "3000";
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
-
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    // Get Zoho Creator token
-    const creatorToken = await getZohoToken();
+    if (cachedEmployees && Date.now() - cachedEmployeesAt < 2 * 60 * 1000) {
+      return res.status(200).json({ success: true, employees: cachedEmployees });
+    }
 
-    // Fetch all employees from Employees_Report
-    const empRes = await fetch(
-      `${ZOHO_BASE}/report/Employees_Report?max_records=500`,
-      { headers: { Authorization: `Zoho-oauthtoken ${creatorToken}` } }
-    );
+    const token = await getZohoToken();
+    const response = await fetch(`${ZOHO_BASE}/report/All_Employees?max_records=500`, {
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
+    const data = await response.json();
+    if (!response.ok || isZohoError(data)) {
+      return res.status(502).json({
+        error: "zoho_employee_load_failed",
+        message: data.description || data.message || "Could not load employees from Zoho Creator.",
+        details: data,
+      });
+    }
 
-    const empData = await empRes.json();
-    const records = empData.data || [];
-
-    // Map employees to simple format for dropdown
-    const employees = records
-      .filter(emp => {
-        // Only include active employees
-        const isActive = emp.Is_Active === true || 
-                        emp.is_active === "true" || 
-                        emp.Is_Active === "Choice 1";
-        return isActive;
-      })
+    const employees = (data.data || [])
+      .filter(isActive)
       .map(emp => ({
+        ID: emp.ID,
         id: emp.ID,
-        name: `${emp.First_Name || emp.first_name || ""} ${emp.Last_Name || emp.last_name || ""}`.trim(),
-        role: emp.Role_Name || emp.role_name || emp.Designation || emp.designation || "Staff",
-        email: emp.Email || emp.email || "",
+        first_name: firstValue(emp, ["First_Name", "first_name"], typeof emp.Name === "object" ? emp.Name?.first_name || "" : ""),
+        last_name: firstValue(emp, ["Last_Name", "last_name"], typeof emp.Name === "object" ? emp.Name?.last_name || "" : ""),
+        name: employeeName(emp),
+        email: firstValue(emp, ["Email", "email"]),
+        designation: firstValue(emp, ["Designation", "designation", "Role_Name", "role_name"], "Staff"),
+        is_active: true,
       }))
-      .sort((a, b) => a.name.localeCompare(b.name)); // Sort by name
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-    return res.status(200).json({
-      success: true,
-      employees,
-      count: employees.length,
-    });
+    cachedEmployees = employees;
+    cachedEmployeesAt = Date.now();
 
-  } catch (error) {
-    console.error("Error fetching employees:", error);
-    return res.status(500).json({
-      error: "Failed to fetch employees",
-      message: error.message,
-    });
+    return res.status(200).json({ success: true, employees });
+  } catch (e) {
+    console.error("Employees API error:", e);
+    return res.status(500).json({ error: e.message });
   }
 }
