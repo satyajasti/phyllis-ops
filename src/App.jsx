@@ -578,22 +578,29 @@ export default function PhyllisOps(){
   };
 
   // Dynamic tabs based on allowed modules
+  const TAB_GROUPS=[
+    {group:"Daily",   tabs:["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Temp Log","Checklists","Waste Log"]},
+    {group:"Menu",    tabs:["Ingredient Costs","Recipes","SOPs"]},
+    {group:"Reports", tabs:["Analytics","COGS Report","Receipts","Export"]},
+    {group:"Admin",   tabs:["Employees","Role Templates"]},
+  ];
   const TAB_ORDER=["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
   const allowed=isAdmin?["ALL"]:(me?.allowedModules||DEFAULT_STAFF_MODULES);
   const canSee=(mod)=>allowed.includes("ALL")||allowed.includes(mod);
   const TABS=TAB_ORDER.filter(t=>canSee(t));
   const activeTab=TABS.includes(tab)?tab:(TABS[0]||"Dashboard");
+  const visibleGroups=TAB_GROUPS.map(g=>({...g,tabs:g.tabs.filter(t=>canSee(t))})).filter(g=>g.tabs.length>0);
 
   const S={
     page:{minHeight:"100vh",background:"#0c0b09",color:"#d4c9b8",fontFamily:"'Trebuchet MS',sans-serif"},
-    card:{background:"#141210",border:"1px solid #252220",borderRadius:"3px"},
-    lbl:{fontSize:"10px",letterSpacing:"3px",textTransform:"uppercase",color:"#666"},
-    inp:{background:"#0c0b09",border:"1px solid #2e2b26",color:"#d4c9b8",padding:"6px 10px",fontSize:"13px",borderRadius:"2px",outline:"none"},
-    btn:{background:"#c8a96e",color:"#0c0b09",border:"none",padding:"8px 18px",fontSize:"12px",fontWeight:"700",letterSpacing:"1px",cursor:"pointer",borderRadius:"2px"},
-    btnSm:{background:"#1e2820",color:"#7eb87e",border:"1px solid #2e4830",padding:"5px 12px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"},
-    btnDanger:{background:"none",border:"1px solid #3a1e1e",color:"#8a5555",padding:"5px 12px",fontSize:"11px",cursor:"pointer",borderRadius:"2px"},
-    th:{padding:"8px 12px",textAlign:"left",fontSize:"10px",letterSpacing:"1px",textTransform:"uppercase",color:"#555",background:"#100f0d"},
-    td:{padding:"8px 12px",fontSize:"13px"},
+    card:{background:"#141210",border:"1px solid #252220",borderRadius:"4px"},
+    lbl:{fontSize:"11px",letterSpacing:"2px",textTransform:"uppercase",color:"#666"},
+    inp:{background:"#0c0b09",border:"1px solid #2e2b26",color:"#d4c9b8",padding:"9px 12px",fontSize:"16px",borderRadius:"4px",outline:"none",WebkitAppearance:"none"},
+    btn:{background:"#c8a96e",color:"#0c0b09",border:"none",padding:"10px 20px",fontSize:"13px",fontWeight:"700",letterSpacing:"1px",cursor:"pointer",borderRadius:"4px",touchAction:"manipulation"},
+    btnSm:{background:"#1e2820",color:"#7eb87e",border:"1px solid #2e4830",padding:"7px 14px",fontSize:"12px",cursor:"pointer",borderRadius:"4px",touchAction:"manipulation"},
+    btnDanger:{background:"none",border:"1px solid #3a1e1e",color:"#8a5555",padding:"7px 14px",fontSize:"12px",cursor:"pointer",borderRadius:"4px",touchAction:"manipulation"},
+    th:{padding:"10px 12px",textAlign:"left",fontSize:"11px",letterSpacing:"1px",textTransform:"uppercase",color:"#555",background:"#100f0d"},
+    td:{padding:"10px 12px",fontSize:"14px"},
     amber:{color:"#c8a96e"},green:{color:"#7eb87e"},red:{color:"#c07070"},
   };
 
@@ -728,20 +735,25 @@ export default function PhyllisOps(){
         </span>
       </div>
 
-      {/* Tabs */}
-      <div style={{background:"#100f0d",borderBottom:"1px solid #1e1c18",display:"flex",overflowX:"auto",padding:"0 12px"}}>
-        {TABS.map(t=>(
-          <button key={t} onClick={()=>setTab(t)} style={{
-            background:"none",border:"none",
-            borderBottom:activeTab===t?"2px solid #c8a96e":"2px solid transparent",
-            color:activeTab===t?"#c8a96e":"#555",padding:"11px 14px",fontSize:"11px",
-            letterSpacing:"1.5px",cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase"}}>
-            {t}
-          </button>
+      {/* Grouped Tabs */}
+      <div style={{background:"#100f0d",borderBottom:"1px solid #1e1c18",overflowX:"auto"}}>
+        {visibleGroups.map(g=>(
+          <div key={g.group} style={{display:"inline-flex",alignItems:"center",borderRight:"1px solid #1e1c18",padding:"0 4px"}}>
+            <span style={{fontSize:"9px",letterSpacing:"2px",textTransform:"uppercase",color:"#3a3830",padding:"0 8px",whiteSpace:"nowrap"}}>{g.group}</span>
+            {g.tabs.map(t=>(
+              <button key={t} onClick={()=>setTab(t)} style={{
+                background:"none",border:"none",
+                borderBottom:activeTab===t?"2px solid #c8a96e":"2px solid transparent",
+                color:activeTab===t?"#c8a96e":"#666",padding:"12px 12px",fontSize:"11px",
+                letterSpacing:"1px",cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",touchAction:"manipulation"}}>
+                {t}
+              </button>
+            ))}
+          </div>
         ))}
       </div>
 
-      <div style={{padding:"20px",maxWidth:"1100px",margin:"0 auto"}}>
+      <div style={{padding:"16px",maxWidth:"1100px",margin:"0 auto",boxSizing:"border-box"}}>
         {loadErr&&(
           <div style={{background:"#1a0a0a",border:"1px solid #3a1e1e",borderRadius:"3px",padding:"12px 14px",marginBottom:"18px",fontSize:"12px",color:"#c07070",lineHeight:"1.6"}}>
             {loadErr}
@@ -751,7 +763,14 @@ export default function PhyllisOps(){
         {/* ══ DASHBOARD ══ */}
         {activeTab==="Dashboard"&&(
           <div>
-            <div style={{...S.lbl,marginBottom:"16px"}}>Summary — {date}</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"10px",marginBottom:"16px"}}>
+              <div style={S.lbl}>Summary — {date}</div>
+              <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                {canSee("Sales Entry")&&<button onClick={()=>setTab("Sales Entry")} style={{...S.btnSm,fontSize:"12px"}}>+ Log Sales</button>}
+                {canSee("PAR Entry")&&<button onClick={()=>setTab("PAR Entry")} style={{...S.btnSm,fontSize:"12px"}}>+ PAR Check</button>}
+                {canSee("Staff Hours")&&<button onClick={()=>setTab("Staff Hours")} style={{...S.btnSm,fontSize:"12px"}}>+ Staff Hours</button>}
+              </div>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:"12px",marginBottom:"20px"}}>
               {[
                 {l:"Revenue",      v:`$${M.rev.toFixed(2)}`,        c:"#7eb87e"},
@@ -790,8 +809,9 @@ export default function PhyllisOps(){
                 </div>
               </div>
             ):(
-              <div style={{...S.card,padding:"24px",textAlign:"center",color:"#444",fontSize:"13px"}}>
-                No sales for {date} — enter data in Sales Entry tab.
+              <div style={{...S.card,padding:"28px",textAlign:"center"}}>
+                <div style={{color:"#666",fontSize:"14px",marginBottom:"16px"}}>No sales logged for {date} yet.</div>
+                {canSee("Sales Entry")&&<button onClick={()=>setTab("Sales Entry")} style={{...S.btn,fontSize:"13px"}}>Log Today's Sales →</button>}
               </div>
             )}
           </div>
@@ -804,8 +824,8 @@ export default function PhyllisOps(){
               <span style={S.lbl}>Completed by:</span>
               <input value={parStaff||fullName} onChange={e=>setPS(e.target.value)}
                 style={{...S.inp,width:"200px"}}/>
-              <button onClick={savePAR} style={S.btn} disabled={!!saving}>
-                {saving?"Saving…":"Save to Zoho"}
+              <button onClick={savePAR} style={{...S.btn,opacity:saving?0.6:1}} disabled={!!saving}>
+                {saving?"⏳ Saving…":"Save to Zoho"}
               </button>
             </div>
             {CATS.map(cat=>(
