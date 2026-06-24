@@ -19,7 +19,7 @@ const zoho = async (action, form, payload = {}) => {
     body: JSON.stringify({ action, form, ...payload }),
   });
   const data = await res.json();
-  if (!res.ok || data?.error) throw new Error(data?.message || data?.error || "Zoho request failed");
+  if (!res.ok || data?.error) throw new Error(data?.message || data?.error || JSON.stringify(data) || "Zoho request failed");
   return data;
 };
 
@@ -488,7 +488,7 @@ export default function PhyllisOps(){
       if(r.data) setRecipes(prev=>[...prev,{...d,ID:r.data.ID}]);
       setNN(""); setNP("");
       showFlash("Recipe saved to Zoho ✓");
-    }catch(e){showFlash("Save error");}
+    }catch(e){showFlash("Save error: "+e.message);}
     setSaving("");
   };
 
