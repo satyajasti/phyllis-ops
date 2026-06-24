@@ -48,7 +48,7 @@ const FIELD_MAPS = {
   }),
   Recipes: (d) => ({
     Recipe_Name: d.recipe_name || d.name || "",
-    Selling_Price: parseFloat(d.selling_price || d.price || 0),
+    Selling_Price: parseFloat(parseFloat(d.selling_price || d.price || 0).toFixed(2)),
   }),
   Ingredients: (d) => ({
     Ingredient_Name: d.ingredient_name || "",
@@ -77,7 +77,7 @@ const FIELD_MAPS = {
     Recipe_Name: d.recipe_name || "",
     Recipe_ID: d.recipe_id || "",
     Quantity_Sold: d.qty_sold || 0,
-    Selling_Price: parseFloat(d.selling_price || 0),
+    Selling_Price: parseFloat(parseFloat(d.selling_price || 0).toFixed(2)),
     Entered_By: d.entered_by || "",
   }),
   Labor_Entries: (d) => ({
