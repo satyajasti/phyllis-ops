@@ -265,7 +265,6 @@ export default async function handler(req, res) {
           body: JSON.stringify({ data: mappedData }),
         });
         const d = await r.json();
-        console.log("Zoho CREATE", form, "payload:", JSON.stringify(mappedData), "response:", JSON.stringify(d));
         if (!r.ok || (d.code && String(d.code) !== "3000")) {
           const errMsg = d.message || d.description || JSON.stringify(d);
           return res.status(200).json({ error: errMsg, details: d });
