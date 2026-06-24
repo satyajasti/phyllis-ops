@@ -49,7 +49,6 @@ const FIELD_MAPS = {
   Recipes: (d) => ({
     Recipe_Name: d.recipe_name || d.name || "",
     Selling_Price: d.selling_price || d.price || 0,
-    Is_Active: "true",
   }),
   Ingredients: (d) => ({
     Ingredient_Name: d.ingredient_name || "",
