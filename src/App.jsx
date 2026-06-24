@@ -31,41 +31,7 @@ const zoho = async (action, form, payload = {}) => {
 const asArray = value => Array.isArray(value) ? value : [];
 
 // ─── Static ingredients list ───
-const INGREDIENTS = [
-  { id:"p1",  name:"Chicken Wings (whole)",     unit:"case/40lb",     category:"Proteins",    par:"2 cases/wk" },
-  { id:"p2",  name:"Chicken Wingettes",          unit:"case/40lb",     category:"Proteins",    par:"1 case/wk" },
-  { id:"p3",  name:"Chicken Breast",             unit:"bag/5 breasts", category:"Proteins",    par:"6 bags/wk" },
-  { id:"p4",  name:"Turkey Bacon",               unit:"pack/1lb",      category:"Proteins",    par:"8 packs/wk" },
-  { id:"p5",  name:"Ground Beef 80/20",          unit:"pack/5lb",      category:"Proteins",    par:"3 packs/wk" },
-  { id:"p6",  name:"Ground Turkey",              unit:"pack/3lb",      category:"Proteins",    par:"4 packs/wk" },
-  { id:"p7",  name:"Chicken Sausage",            unit:"pack/5lb",      category:"Proteins",    par:"3 packs/wk" },
-  { id:"p8",  name:"Steak Filets",               unit:"case/10lb",     category:"Proteins",    par:"1 case/wk" },
-  { id:"p9",  name:"Pulled Pork",                unit:"bag/10lb",      category:"Proteins",    par:"2 bags/wk" },
-  { id:"p10", name:"Frozen Salmon",              unit:"case/10lb",     category:"Proteins",    par:"2 cases/wk" },
-  { id:"p11", name:"Shrimp 16/20",               unit:"bag/5lb",       category:"Proteins",    par:"3 bags/wk" },
-  { id:"p12", name:"Catfish Fillets",            unit:"case/10lb",     category:"Proteins",    par:"2 cases/wk" },
-  { id:"p13", name:"Turkey Sausage Links",       unit:"box/5lb",       category:"Proteins",    par:"2 boxes/wk" },
-  { id:"p14", name:"Turkey Sausage Patties",     unit:"box/5lb",       category:"Proteins",    par:"1 box/wk" },
-  { id:"p15", name:"Bacon Thick-Cut",            unit:"pack/3lb",      category:"Proteins",    par:"5 packs/wk" },
-  { id:"p16", name:"Eggs (large)",               unit:"case/15doz",    category:"Proteins",    par:"1.5 cases/wk" },
-  { id:"d1",  name:"Whole Milk",                 unit:"gallon",        category:"Dairy",       par:"4 gal/wk" },
-  { id:"d2",  name:"Heavy Cream",                unit:"quart",         category:"Dairy",       par:"3 qt/wk" },
-  { id:"d3",  name:"Butter (unsalted)",          unit:"pack/4 sticks", category:"Dairy",       par:"5 packs/wk" },
-  { id:"d4",  name:"Shredded Cheddar",           unit:"bag/5lb",       category:"Dairy",       par:"1 bag/wk" },
-  { id:"d5",  name:"Buttermilk",                 unit:"gallon",        category:"Dairy",       par:"3 gal/wk" },
-  { id:"ds1", name:"Stone-Ground Grits",         unit:"bag/5lb",       category:"Dry Storage", par:"6 bags/wk" },
-  { id:"ds2", name:"All-Purpose Flour",          unit:"bag/25lb",      category:"Dry Storage", par:"1 bag/wk" },
-  { id:"ds3", name:"Self-Rising Flour",          unit:"bag/25lb",      category:"Dry Storage", par:"1 bag/wk" },
-  { id:"ds4", name:"Panko Breadcrumbs",          unit:"bag/2.5lb",     category:"Dry Storage", par:"2 bags/wk" },
-  { id:"ds5", name:"Canola Oil",                 unit:"jug/35lb",      category:"Dry Storage", par:"1 jug/wk" },
-  { id:"ds6", name:"Brown Sugar",                unit:"bag/4lb",       category:"Dry Storage", par:"2 bags/wk" },
-  { id:"pr1", name:"Yellow Onions",              unit:"bag/10lb",      category:"Produce",     par:"2 bags/wk" },
-  { id:"pr2", name:"Garlic (fresh)",             unit:"bag/3lb",       category:"Produce",     par:"2 bags/wk" },
-  { id:"pr3", name:"Roma Tomatoes",              unit:"case/25lb",     category:"Produce",     par:"1 case/wk" },
-  { id:"pr4", name:"Sweet Potatoes",             unit:"box/40lb",      category:"Produce",     par:"1 box/wk" },
-  { id:"pr5", name:"Collard Greens",             unit:"box/20lb",      category:"Produce",     par:"1 box/wk" },
-  { id:"pr6", name:"Avocados",                   unit:"each",          category:"Produce",     par:"6/wk" },
-];
+// Ingredients loaded dynamically from Zoho — see state: ingredients
 
 function orderUnitFromParUnit(unit = "") {
   const raw = String(unit).trim().toLowerCase();
@@ -80,7 +46,7 @@ function orderUnitFromParUnit(unit = "") {
   return raw || "lb";
 }
 
-const CATS = ["Proteins","Dairy","Dry Storage","Produce"];
+const INGREDIENT_CATS = ["Proteins","Dairy","Dry Storage","Produce"];
 const DESIGNATIONS = [
   "General Manager","Kitchen Manager","Line Cook","Prep Cook",
   "Server","Bartender","Host/Hostess","Dishwasher","Cashier",
@@ -200,6 +166,7 @@ export default function PhyllisOps(){
 
   // Zoho data
   const [employees,setEmps]  = useState([]);
+  const [ingredients,setIngredients] = useState([]);
   const [recipes,setRecipes] = useState([]);
   const [recipeIngs,setRecipeIngs] = useState([]); // all recipe_ingredients records
   const [costs,setCosts]     = useState({});        // {ingredient_id: cost}
@@ -267,9 +234,20 @@ export default function PhyllisOps(){
         setEmps(asArray(emps));
         setRecipes(asArray(recs));
         setRecipeIngs(asArray(rIngs));
-        // Build cost map from Ingredients form
+        // Build ingredients list from Zoho (normalized to same shape as old static array)
+        const ingList=asArray(ingCosts).map(r=>({
+          id: r.ingredient_id||r.Ingredient_ID||r.ID,
+          zohoId: r.ID,
+          name: r.ingredient_name||r.Ingredient_Name||"",
+          unit: r.purchase_unit||r.Purchase_Unit||"",
+          category: r.category||r.Category||"",
+          par: r.weekly_par||r.Weekly_PAR||"",
+          cost_per_unit: parseFloat(r.cost_per_unit||r.Cost_Per_Unit||0),
+        }));
+        setIngredients(ingList);
+        // Build cost map from Ingredients
         const cm={};
-        asArray(ingCosts).forEach(r=>{ cm[r.ingredient_id||r.Ingredient_ID]=parseFloat(r.cost_per_unit||r.Cost_Per_Unit||0); });
+        ingList.forEach(r=>{ cm[r.id]=r.cost_per_unit; });
         setCosts(cm);
       }catch(e){
         console.error("Load error",e);
@@ -506,8 +484,8 @@ export default function PhyllisOps(){
       if(existing&&existing.length>0){
         await zoho("update","Ingredients_Report",{data:{cost_per_unit:value},recordId:existing[0].ID});
       } else {
-        const ing=INGREDIENTS.find(i=>i.id===ingId);
-        await zoho("create","Ingredients",{data:{
+        const ing=ingredients.find(i=>i.id===ingId)||INGREDIENTS.find(i=>i.id===ingId);
+        const newRec=await zoho("create","Ingredients",{data:{
           ingredient_id:ingId,
           ingredient_name:ing?.name||ingId,
           purchase_unit:ing?.unit||"",
@@ -515,6 +493,7 @@ export default function PhyllisOps(){
           weekly_par:ing?.par||"",
           cost_per_unit:value,
         }});
+        if(newRec?.data?.ID) setIngredients(prev=>prev.map(i=>i.id===ingId?{...i,zohoId:newRec.data.ID,cost_per_unit:value}:i));
       }
     }catch(e){console.error("Cost save error",e);}
   };
@@ -578,6 +557,12 @@ export default function PhyllisOps(){
   };
 
   // Dynamic tabs based on allowed modules
+  // Derive categories from loaded ingredients, fallback to defaults while loading
+  const INGREDIENTS = ingredients.length > 0 ? ingredients : [];
+  const CATS = ingredients.length > 0
+    ? [...new Set(ingredients.map(i=>i.category))].filter(Boolean).sort()
+    : INGREDIENT_CATS;
+
   const TAB_GROUPS=[
     {group:"Daily",   tabs:["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Temp Log","Checklists","Waste Log"]},
     {group:"Menu",    tabs:["Ingredient Costs","Recipes","SOPs"]},
@@ -828,6 +813,7 @@ export default function PhyllisOps(){
                 {saving?"⏳ Saving…":"Save to Zoho"}
               </button>
             </div>
+            {ingredients.length===0&&<div style={{...S.card,padding:"20px",textAlign:"center",color:"#555",fontSize:"13px"}}>Loading ingredients from Zoho…</div>}
             {CATS.map(cat=>(
               <div key={cat} style={{marginBottom:"20px"}}>
                 <div style={{...S.amber,...S.lbl,marginBottom:"10px",paddingBottom:"6px",borderBottom:"1px solid #c8a96e22"}}>{cat}</div>
@@ -868,8 +854,44 @@ export default function PhyllisOps(){
         {activeTab==="Ingredient Costs"&&(
           <div>
             <div style={{background:"#080f08",border:"1px solid #1a3a1a",borderRadius:"2px",padding:"10px 14px",marginBottom:"18px",fontSize:"12px",color:"#5a9a5a",lineHeight:"1.6"}}>
-              💡 Costs save to Zoho automatically as you type. Click 🔍 to compare supplier prices.
+              💡 Costs save to Zoho automatically as you type. Click 🔍 to compare prices. Add new ingredients with the form below.
             </div>
+            {/* ── Add New Ingredient ── */}
+            {isAdmin&&(
+              <div style={{...S.card,padding:"14px 16px",marginBottom:"20px"}}>
+                <div style={{...S.lbl,marginBottom:"10px",color:"#c8a96e"}}>Add new ingredient</div>
+                <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"flex-end"}}>
+                  <input id="ni-name" placeholder="Ingredient name" style={{...S.inp,flex:"2",minWidth:"140px"}}/>
+                  <input id="ni-unit" placeholder="Unit (e.g. bag/5lb)" style={{...S.inp,flex:"1",minWidth:"100px"}}/>
+                  <select id="ni-cat" style={{...S.inp,flex:"1",minWidth:"100px"}}>
+                    {INGREDIENT_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input id="ni-par" placeholder="PAR (e.g. 2 bags/wk)" style={{...S.inp,flex:"1",minWidth:"100px"}}/>
+                  <button style={S.btn} onClick={async()=>{
+                    const name=document.getElementById("ni-name").value.trim();
+                    const unit=document.getElementById("ni-unit").value.trim();
+                    const cat=document.getElementById("ni-cat").value;
+                    const par=document.getElementById("ni-par").value.trim();
+                    if(!name||!unit) return showFlash("Name and unit required");
+                    const prefix=cat==="Proteins"?"p":cat==="Dairy"?"d":cat==="Dry Storage"?"ds":"pr";
+                    const existing=ingredients.filter(i=>i.id.startsWith(prefix));
+                    const newId=prefix+(existing.length+1);
+                    setSaving("Adding ingredient...");
+                    try{
+                      const r=await zoho("create","Ingredients",{data:{ingredient_id:newId,ingredient_name:name,purchase_unit:unit,category:cat,weekly_par:par,cost_per_unit:0}});
+                      if(r.data?.ID){
+                        setIngredients(prev=>[...prev,{id:newId,zohoId:r.data.ID,name,unit,category:cat,par,cost_per_unit:0}]);
+                        document.getElementById("ni-name").value="";
+                        document.getElementById("ni-unit").value="";
+                        document.getElementById("ni-par").value="";
+                        showFlash("Ingredient added to Zoho ✓");
+                      }
+                    }catch(e){showFlash("Error: "+e.message);}
+                    setSaving("");
+                  }}>+ Add</button>
+                </div>
+              </div>
+            )}
             {CATS.map(cat=>(
               <div key={cat} style={{marginBottom:"22px"}}>
                 <div style={{...S.amber,...S.lbl,marginBottom:"10px",paddingBottom:"6px",borderBottom:"1px solid #c8a96e22"}}>{cat}</div>
@@ -977,8 +999,8 @@ export default function PhyllisOps(){
                     </div>
                   )}
                   {editRec===(rec.ID||rec.id)&&(
-                    <AddIngToRecipe recipe={rec} costs={costs} onAdd={async(ingId,qty)=>{
-                      const ing=INGREDIENTS.find(i=>i.id===ingId);
+                    <AddIngToRecipe recipe={rec} costs={costs} ingredients={INGREDIENTS} onAdd={async(ingId,qty)=>{
+                      const ing=ingredients.find(i=>i.id===ingId);
                       const d={
                         recipe_id:rec.ID||rec.id,
                         recipe_name:rec.recipe_name||rec.name,
@@ -1104,7 +1126,7 @@ export default function PhyllisOps(){
 
         {/* ══ KITCHEN ORDER LIST ══ */}
         {activeTab==="Kitchen Order List"&&(
-          <KitchenOrderList S={S} me={me} zoho={zoho} showFlash={showFlash}/>
+          <KitchenOrderList S={S} me={me} zoho={zoho} showFlash={showFlash} ingredients={INGREDIENTS}/>
         )}
 
         {/* ══ ANALYTICS ══ */}
@@ -1404,14 +1426,14 @@ export default function PhyllisOps(){
 }
 
 // ── Add ingredient to recipe sub-component ──
-function AddIngToRecipe({recipe,costs,onAdd}){
-  const [selId,setSel]=useState(INGREDIENTS[0].id);
+function AddIngToRecipe({recipe,costs,onAdd,ingredients}){
+  const [selId,setSel]=useState(ingredients[0]?.id||"");
   const [qty,setQty]=useState("");
   return(
     <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap",padding:"10px 16px",background:"#0e100e",borderTop:"1px solid #1e2a1e"}}>
       <span style={{fontSize:"11px",color:"#5a8a5a"}}>+ Add ingredient:</span>
       <select value={selId} onChange={e=>setSel(e.target.value)} style={{flex:1,minWidth:"160px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"5px 8px",fontSize:"12px",borderRadius:"2px",outline:"none"}}>
-        {INGREDIENTS.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+        {ingredients.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
       </select>
       <input type="number" min="0" step="0.001" value={qty} onChange={e=>setQty(e.target.value)} placeholder="qty"
         style={{width:"64px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#c8a96e",padding:"5px 8px",fontSize:"12px",borderRadius:"2px",outline:"none"}}/>
@@ -1720,7 +1742,7 @@ function WasteLog({date,me,zoho,showFlash,S,recipes}){
 // ══════════════════════════════════════
 // KITCHEN ORDER LIST COMPONENT
 // ══════════════════════════════════════
-function KitchenOrderList({ S, me, zoho, showFlash }) {
+function KitchenOrderList({ S, me, zoho, showFlash, ingredients }) {
   const today = new Date().toISOString().split("T")[0];
   const blankRow = { item: "", qty: "", unit: "lb", needed_by: today, notes: "" };
   const [rows, setRows] = useState([
