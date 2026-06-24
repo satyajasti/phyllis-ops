@@ -19,7 +19,12 @@ const zoho = async (action, form, payload = {}) => {
     body: JSON.stringify({ action, form, ...payload }),
   });
   const data = await res.json();
-  if (!res.ok || data?.error) throw new Error(data?.message || data?.error || JSON.stringify(data) || "Zoho request failed");
+  if (!res.ok || data?.error) {
+    const msg = typeof data?.message === "string" ? data.message
+      : typeof data?.error === "string" ? data.error
+      : JSON.stringify(data);
+    throw new Error(msg || "Zoho request failed");
+  }
   return data;
 };
 
