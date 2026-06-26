@@ -167,6 +167,7 @@ export default function PhyllisOps(){
   // Zoho data
   const [employees,setEmps]  = useState([]);
   const [ingredients,setIngredients] = useState([]);
+  const [measurementUnits,setMeasurementUnits] = useState([]);
   const [recipes,setRecipes] = useState([]);
   const [recipeIngs,setRecipeIngs] = useState([]); // all recipe_ingredients records
   const [costs,setCosts]     = useState({});        // {ingredient_id: cost}
@@ -225,11 +226,12 @@ export default function PhyllisOps(){
     (async()=>{
       setLoadErr("");
       try{
-        const [emps,recs,rIngs,ingCosts]=await Promise.all([
+        const [emps,recs,rIngs,ingCosts,muList]=await Promise.all([
           zoho("getAll","Employees"),
           zoho("getAll","Recipes"),
           zoho("getAll","Recipe_Ingredients"),
           zoho("getAll","Ingredients"),
+          zoho("getAll","Measurement_Units").catch(()=>[]),
         ]);
         setEmps(asArray(emps));
         setRecipes(asArray(recs));
@@ -245,6 +247,34 @@ export default function PhyllisOps(){
           cost_per_unit: parseFloat(r.cost_per_unit||r.Cost_Per_Unit||0),
         }));
         setIngredients(ingList);
+        const muArr=asArray(muList).map(r=>({
+          id: r.ID,
+          name: r.unit_name||r.Unit_Name||"",
+          type: r.unit_type||r.Unit_Type||"",
+          oz:   parseFloat(r.oz_equivalent||r.Oz_Equivalent||0),
+          order:parseInt(r.display_order||r.Display_Order||0),
+        })).sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name));
+        // Seed defaults if Zoho has none yet
+        if(muArr.length===0){
+          const defaults=[
+            {unit_name:"tsp",     unit_type:"Volume", oz_equivalent:0.1667, display_order:1},
+            {unit_name:"tbsp",    unit_type:"Volume", oz_equivalent:0.5,    display_order:2},
+            {unit_name:"cup",     unit_type:"Volume", oz_equivalent:8,      display_order:3},
+            {unit_name:"fl oz",   unit_type:"Volume", oz_equivalent:1,      display_order:4},
+            {unit_name:"scoop (2oz)", unit_type:"Scoop", oz_equivalent:2,   display_order:5},
+            {unit_name:"scoop (4oz)", unit_type:"Scoop", oz_equivalent:4,   display_order:6},
+            {unit_name:"scoop (6oz)", unit_type:"Scoop", oz_equivalent:6,   display_order:7},
+            {unit_name:"oz",      unit_type:"Weight", oz_equivalent:1,      display_order:8},
+            {unit_name:"g",       unit_type:"Weight", oz_equivalent:0.0353, display_order:9},
+            {unit_name:"lb",      unit_type:"Weight", oz_equivalent:16,     display_order:10},
+            {unit_name:"pinch",   unit_type:"Volume", oz_equivalent:0.02,   display_order:11},
+            {unit_name:"each",    unit_type:"Count",  oz_equivalent:0,      display_order:12},
+            {unit_name:"portion", unit_type:"Count",  oz_equivalent:0,      display_order:13},
+          ];
+          setMeasurementUnits(defaults.map((d,i)=>({id:"default_"+i,...d,name:d.unit_name,type:d.unit_type,oz:d.oz_equivalent,order:d.display_order})));
+        } else {
+          setMeasurementUnits(muArr);
+        }
         // Build cost map from Ingredients
         const cm={};
         ingList.forEach(r=>{ cm[r.id]=r.cost_per_unit; });
@@ -567,9 +597,9 @@ export default function PhyllisOps(){
     {group:"Daily",   tabs:["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Temp Log","Checklists","Waste Log"]},
     {group:"Menu",    tabs:["Ingredient Costs","Recipes","SOPs"]},
     {group:"Reports", tabs:["Analytics","COGS Report","Receipts","Export"]},
-    {group:"Admin",   tabs:["Employees","Role Templates"]},
+    {group:"Admin",   tabs:["Employees","Role Templates","Measurement Units"]},
   ];
-  const TAB_ORDER=["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
+  const TAB_ORDER=["Dashboard","PAR Entry","Sales Entry","Staff Hours","Kitchen Order List","Ingredient Costs","Recipes","Analytics","COGS Report","Employees","Role Templates","Measurement Units","Temp Log","Checklists","Waste Log","SOPs","Receipts","Export"];
   const allowed=isAdmin?["ALL"]:(me?.allowedModules||DEFAULT_STAFF_MODULES);
   const canSee=(mod)=>allowed.includes("ALL")||allowed.includes(mod);
   const TABS=TAB_ORDER.filter(t=>canSee(t));
@@ -956,6 +986,16 @@ export default function PhyllisOps(){
               const pc=(rec.ingredients||[]).reduce((s,ri)=>{
                 const portionCost=parseFloat(ri.portion_cost||ri.Portion_Cost||0);
                 if(portionCost>0) return s+portionCost;
+                // If quantity_unit is set, calculate via oz conversion
+                const qtyUnit=ri.quantity_unit||ri.Quantity_Unit||"";
+                const qtyAmt=parseFloat(ri.quantity_amount||ri.Quantity_Amount||0);
+                const mu=qtyUnit?measurementUnits.find(u=>u.name===qtyUnit):null;
+                if(mu&&mu.oz>0&&qtyAmt>0){
+                  // cost = (qtyAmt * mu.oz) / ing.pkg_oz * pkg_cost  -- simplified: unit cost * oz used
+                  const ingId=ri.ingredient_id||ri.Ingredient_ID;
+                  const unitCost=parseFloat(costs[ingId]||0);
+                  return s+(unitCost * qtyAmt * mu.oz);
+                }
                 const qtyNum=parseFloat((ri.quantity_per_plate||ri.Quantity_Per_Plate||"0").toString().replace(/[^0-9.]/g,""))||0;
                 return s+(parseFloat(costs[ri.ingredient_id||ri.Ingredient_ID]||0)*qtyNum);
               },0);
@@ -996,6 +1036,9 @@ export default function PhyllisOps(){
                               <tr key={i} style={{borderTop:i>0?"1px solid #191714":"none"}}>
                                 <td style={{...S.td,color:"#aaa"}}>{ri.ingredient_name||ri.Ingredient_Name||ing?.name}</td>
                                 <td style={{...S.td,fontSize:"12px",color:"#666"}}>
+                                  {(ri.quantity_amount||ri.Quantity_Amount)&&(ri.quantity_unit||ri.Quantity_Unit)?(
+                                    <span style={{color:"#c8a96e"}}>{ri.quantity_amount||ri.Quantity_Amount} {ri.quantity_unit||ri.Quantity_Unit}</span>
+                                  ):null}
                                   {isEditing?(
                                     <input defaultValue={ri.quantity_per_plate||ri.Quantity_Per_Plate||""}
                                       placeholder="e.g. 2 tbsp, 100g, 4 oz"
@@ -1059,7 +1102,7 @@ export default function PhyllisOps(){
                     </div>
                   )}
                   {editRec===(rec.ID||rec.id)&&(
-                    <AddIngToRecipe recipe={rec} costs={costs} ingredients={INGREDIENTS} onAdd={async(ingId,qty,portionCost)=>{
+                    <AddIngToRecipe recipe={rec} costs={costs} ingredients={INGREDIENTS} measurementUnits={measurementUnits} onAdd={async(ingId,qty,portionCost,qtyUnit,qtyAmount)=>{
                       const ing=ingredients.find(i=>i.id===ingId);
                       const d={
                         recipe_id:rec.ID||rec.id,
@@ -1068,6 +1111,8 @@ export default function PhyllisOps(){
                         ingredient_name:ing?.name||ingId,
                         quantity_per_plate:qty,
                         portion_cost:portionCost||0,
+                        quantity_unit:qtyUnit||"",
+                        quantity_amount:qtyAmount||0,
                       };
                       const r=await zoho("create","Recipe_Ingredients",{data:d});
                       if(r.data) setRecipeIngs(prev=>[...prev,{...d,ID:r.data.ID}]);
@@ -1439,6 +1484,80 @@ export default function PhyllisOps(){
           </div>
         )}
 
+        {/* ══ MEASUREMENT UNITS ══ */}
+        {activeTab==="Measurement Units"&&(
+          <div>
+            <div style={{...S.lbl,marginBottom:"16px"}}>Measurement Units — used in Recipe Ingredients</div>
+            <div style={{...S.card,padding:"14px 16px",marginBottom:"20px"}}>
+              <div style={{...S.lbl,marginBottom:"10px",color:"#c8a96e"}}>Add new unit</div>
+              <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"flex-end"}}>
+                <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                  <span style={{fontSize:"11px",color:"#555"}}>Unit name</span>
+                  <input id="mu-name" placeholder="e.g. scoop (4oz)" style={{...S.inp,width:"150px"}}/>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                  <span style={{fontSize:"11px",color:"#555"}}>Type</span>
+                  <select id="mu-type" style={{...S.inp,width:"110px"}}>
+                    {["Volume","Weight","Scoop","Count"].map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                  <span style={{fontSize:"11px",color:"#555"}}>Oz equivalent</span>
+                  <input id="mu-oz" type="number" step="0.001" placeholder="e.g. 4" style={{...S.inp,width:"100px"}}/>
+                </div>
+                <button style={S.btn} onClick={async()=>{
+                  const name=document.getElementById("mu-name").value.trim();
+                  const type=document.getElementById("mu-type").value;
+                  const oz=parseFloat(document.getElementById("mu-oz").value)||0;
+                  if(!name) return showFlash("Unit name required");
+                  setSaving("Adding unit...");
+                  try{
+                    const r=await zoho("create","Measurement_Units",{data:{unit_name:name,unit_type:type,oz_equivalent:oz,display_order:measurementUnits.length+1}});
+                    if(r.data?.ID){
+                      setMeasurementUnits(prev=>[...prev,{id:r.data.ID,name,type,oz,order:prev.length+1}]);
+                      document.getElementById("mu-name").value="";
+                      document.getElementById("mu-oz").value="";
+                      showFlash("Unit added ✓");
+                    }
+                  }catch(e){showFlash("Error: "+e.message);}
+                  setSaving("");
+                }}>+ Add Unit</button>
+              </div>
+            </div>
+            <div style={{...S.card,overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead><tr>
+                  <th style={S.th}>Unit Name</th>
+                  <th style={S.th}>Type</th>
+                  <th style={S.th}>Oz Equivalent</th>
+                  <th style={S.th}>Actions</th>
+                </tr></thead>
+                <tbody>
+                  {measurementUnits.map((mu,i)=>(
+                    <tr key={mu.id||i} style={{borderTop:i>0?"1px solid #1a1916":"none"}}>
+                      <td style={{...S.td,color:"#e8dfc8",fontWeight:"500"}}>{mu.name}</td>
+                      <td style={{...S.td,color:"#888"}}>{mu.type}</td>
+                      <td style={{...S.td,...S.amber}}>{mu.oz>0?`${mu.oz} oz`:"—"}</td>
+                      <td style={{...S.td}}>
+                        {mu.id&&!mu.id.startsWith("default_")&&(
+                          <button onClick={async()=>{
+                            if(!confirm(`Delete "${mu.name}"?`)) return;
+                            try{
+                              await zoho("delete","Measurement_Units",{recordId:mu.id});
+                              setMeasurementUnits(prev=>prev.filter(u=>u.id!==mu.id));
+                              showFlash("Deleted ✓");
+                            }catch(e){showFlash("Error: "+e.message);}
+                          }} style={{...S.btnDanger,padding:"3px 10px",fontSize:"11px"}}>Delete</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* ══ ROLE TEMPLATES ══ */}
         {activeTab==="Role Templates"&&(
           <RoleTemplates S={S} showFlash={showFlash} employees={employees} setEmps={setEmps}/>
@@ -1487,10 +1606,12 @@ export default function PhyllisOps(){
 }
 
 // ── Add ingredient to recipe sub-component ──
-function AddIngToRecipe({recipe,costs,onAdd,ingredients}){
+function AddIngToRecipe({recipe,costs,onAdd,ingredients,measurementUnits}){
   const [selId,setSel]=useState(ingredients[0]?.id||"");
   const [qty,setQty]=useState("");
   const [showHelper,setShowHelper]=useState(false);
+  const [qtyAmount,setQtyAmount]=useState("");
+  const [qtyUnit,setQtyUnit]=useState("");
   // Portion cost helper
   const [pkgSize,setPkgSize]=useState("");
   const [pkgUnit,setPkgUnit]=useState("oz");
@@ -1499,9 +1620,18 @@ function AddIngToRecipe({recipe,costs,onAdd,ingredients}){
   const calcPortionCost=()=>{
     const cost=parseFloat(pkgCost)||0;
     const pl=parseFloat(plates)||1;
+    // If unit has oz equivalent, use it for more accurate calc
+    const mu=measurementUnits.find(u=>u.name===qtyUnit);
+    if(mu&&mu.oz>0&&qtyAmount){
+      // (amount * unit_oz) / pkg_size_oz * pkg_cost
+      const pkgOz=parseFloat(pkgSize)||1;
+      return ((parseFloat(qtyAmount)||0)*mu.oz/pkgOz*cost).toFixed(3);
+    }
     return pl>0?(cost/pl).toFixed(3):"—";
   };
   const ing=ingredients.find(i=>i.id===selId);
+  // Group measurement units by type
+  const muGroups=[...new Set((measurementUnits||[]).map(u=>u.type))];
   return(
     <div style={{background:"#0a0e0a",borderTop:"1px solid #1e2a1e",padding:"12px 16px"}}>
       <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap",marginBottom:showHelper?"10px":"0"}}>
@@ -1509,18 +1639,33 @@ function AddIngToRecipe({recipe,costs,onAdd,ingredients}){
         <select value={selId} onChange={e=>setSel(e.target.value)} style={{flex:2,minWidth:"160px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"7px 8px",fontSize:"13px",borderRadius:"3px",outline:"none"}}>
           {ingredients.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
         </select>
-        <input value={qty} onChange={e=>setQty(e.target.value)}
-          placeholder="e.g. 2 tbsp, 4 oz, 100g"
-          style={{flex:1,minWidth:"120px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#c8a96e",padding:"7px 8px",fontSize:"13px",borderRadius:"3px",outline:"none"}}/>
+        <div style={{display:"flex",gap:"4px",flex:1,minWidth:"180px"}}>
+          <input value={qtyAmount} onChange={e=>setQtyAmount(e.target.value)}
+            placeholder="Amount"
+            style={{width:"70px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#c8a96e",padding:"7px 8px",fontSize:"13px",borderRadius:"3px 0 0 3px",outline:"none"}}/>
+          <select value={qtyUnit} onChange={e=>setQtyUnit(e.target.value)}
+            style={{flex:1,background:"#0c0b09",border:"1px solid #2a3a2a",borderLeft:"none",color:"#d4c9b8",padding:"7px 6px",fontSize:"13px",borderRadius:"0 3px 3px 0",outline:"none"}}>
+            <option value="">-- unit --</option>
+            {muGroups.map(grp=>(
+              <optgroup key={grp} label={grp}>
+                {(measurementUnits||[]).filter(u=>u.type===grp).map(u=>(
+                  <option key={u.id||u.name} value={u.name}>{u.name}{u.oz>0?` (${u.oz} oz)`:""}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
         <button onClick={()=>setShowHelper(!showHelper)}
           title="Calculate portion cost from package price"
           style={{background:showHelper?"#1a2a1a":"none",border:"1px solid #2a3a2a",color:"#5a8a5a",padding:"7px 10px",fontSize:"12px",cursor:"pointer",borderRadius:"3px"}}>
           💰 Calc
         </button>
         <button onClick={()=>{
-          if(!qty.trim()) return;
-          onAdd(selId, qty.trim(), showHelper&&parseFloat(calcPortionCost())>0?parseFloat(calcPortionCost()):0);
-          setQty(""); setPkgCost(""); setPlates(""); setShowHelper(false);
+          if(!qtyAmount) return;
+          const displayQty=qtyUnit?`${qtyAmount} ${qtyUnit}`:qtyAmount;
+          const pc=showHelper&&parseFloat(calcPortionCost())>0?parseFloat(calcPortionCost()):0;
+          onAdd(selId, displayQty, pc, qtyUnit, parseFloat(qtyAmount)||0);
+          setQtyAmount(""); setQtyUnit(""); setPkgCost(""); setPlates(""); setPkgSize(""); setShowHelper(false);
         }} style={{background:"#1e2a1e",color:"#7eb87e",border:"1px solid #3a5a3a",padding:"7px 14px",fontSize:"13px",cursor:"pointer",borderRadius:"3px",fontWeight:"600"}}>Add to Zoho</button>
       </div>
       {showHelper&&(
