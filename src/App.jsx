@@ -954,7 +954,10 @@ export default function PhyllisOps(){
             </div>
             {recipesWithIngs.map(rec=>{
               const pc=(rec.ingredients||[]).reduce((s,ri)=>{
-                return s+(parseFloat(costs[ri.ingredient_id||ri.Ingredient_ID]||0)*parseFloat(ri.quantity_per_plate||ri.Quantity_Per_Plate||0));
+                const portionCost=parseFloat(ri.portion_cost||ri.Portion_Cost||0);
+                if(portionCost>0) return s+portionCost;
+                const qtyNum=parseFloat((ri.quantity_per_plate||ri.Quantity_Per_Plate||"0").toString().replace(/[^0-9.]/g,""))||0;
+                return s+(parseFloat(costs[ri.ingredient_id||ri.Ingredient_ID]||0)*qtyNum);
               },0);
               const price=parseFloat(rec.selling_price||rec.price||0);
               const pct=price>0?(pc/price*100).toFixed(1):0;
@@ -980,13 +983,70 @@ export default function PhyllisOps(){
                       <table style={{width:"100%",borderCollapse:"collapse"}}>
                         <tbody>
                           {(rec.ingredients||[]).map((ri,i)=>{
-                            const ing=INGREDIENTS.find(x=>x.id===(ri.ingredient_id||ri.Ingredient_ID));
-                            const lc=parseFloat(costs[ri.ingredient_id||ri.Ingredient_ID]||0)*parseFloat(ri.quantity_per_plate||ri.Quantity_Per_Plate||0);
+                            const riId=ri.ID||ri.id||i;
+                            const ingId=ri.ingredient_id||ri.Ingredient_ID;
+                            const ing=INGREDIENTS.find(x=>x.id===ingId);
+                            // Cost calc: use portion_cost if set, else cost_per_unit * qty_number
+                            const portionCost=parseFloat(ri.portion_cost||ri.Portion_Cost||0);
+                            const qtyNum=parseFloat((ri.quantity_per_plate||ri.Quantity_Per_Plate||"0").toString().replace(/[^0-9.]/g,""))||0;
+                            const unitCost=parseFloat(costs[ingId]||0);
+                            const lc=portionCost>0?portionCost:(unitCost*qtyNum);
+                            const isEditing=editRec===(rec.ID||rec.id);
                             return(
                               <tr key={i} style={{borderTop:i>0?"1px solid #191714":"none"}}>
                                 <td style={{...S.td,color:"#aaa"}}>{ri.ingredient_name||ri.Ingredient_Name||ing?.name}</td>
-                                <td style={{...S.td,fontSize:"11px",color:"#555"}}>{ri.quantity_per_plate||ri.Quantity_Per_Plate} × {ing?.unit}</td>
-                                <td style={{...S.td,...S.red,textAlign:"right"}}>${lc.toFixed(3)}</td>
+                                <td style={{...S.td,fontSize:"12px",color:"#666"}}>
+                                  {isEditing?(
+                                    <input defaultValue={ri.quantity_per_plate||ri.Quantity_Per_Plate||""}
+                                      placeholder="e.g. 2 tbsp, 100g, 4 oz"
+                                      onBlur={async e=>{
+                                        const val=e.target.value.trim();
+                                        if(!val||!ri.ID) return;
+                                        try{
+                                          await zoho("update","Recipe_Ingredients",{recordId:ri.ID,data:{quantity_per_plate:val}});
+                                          setRecipeIngs(prev=>prev.map(r=>r.ID===ri.ID?{...r,quantity_per_plate:val}:r));
+                                          showFlash("Updated ✓");
+                                        }catch(e){showFlash("Update error: "+e.message);}
+                                      }}
+                                      style={{background:"#0c0b09",border:"1px solid #3a3020",color:"#c8a96e",padding:"4px 8px",fontSize:"12px",borderRadius:"3px",width:"160px"}}/>
+                                  ):(
+                                    <span>{ri.quantity_per_plate||ri.Quantity_Per_Plate||"—"}</span>
+                                  )}
+                                </td>
+                                <td style={{...S.td,textAlign:"right"}}>
+                                  <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:"8px"}}>
+                                    {isEditing?(
+                                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"3px"}}>
+                                        <input defaultValue={portionCost>0?portionCost:""}
+                                          placeholder="plate cost $"
+                                          title="Override: enter exact $ cost for this portion per plate"
+                                          onBlur={async e=>{
+                                            const val=parseFloat(e.target.value)||0;
+                                            if(!ri.ID) return;
+                                            try{
+                                              await zoho("update","Recipe_Ingredients",{recordId:ri.ID,data:{portion_cost:val}});
+                                              setRecipeIngs(prev=>prev.map(r=>r.ID===ri.ID?{...r,portion_cost:val}:r));
+                                              showFlash("Cost updated ✓");
+                                            }catch(e){showFlash("Update error: "+e.message);}
+                                          }}
+                                          style={{background:"#0c0b09",border:"1px solid #3a2020",color:"#c07070",padding:"3px 6px",fontSize:"11px",borderRadius:"3px",width:"90px",textAlign:"right"}}/>
+                                        <span style={{fontSize:"9px",color:"#444"}}>override $/plate</span>
+                                      </div>
+                                    ):(
+                                      <span style={{...S.red}}>${lc.toFixed(3)}</span>
+                                    )}
+                                    {isEditing&&ri.ID&&(
+                                      <button onClick={async()=>{
+                                        if(!confirm("Remove this ingredient?")) return;
+                                        try{
+                                          await zoho("delete","Recipe_Ingredients",{recordId:ri.ID});
+                                          setRecipeIngs(prev=>prev.filter(r=>r.ID!==ri.ID));
+                                          showFlash("Removed ✓");
+                                        }catch(e){showFlash("Delete error: "+e.message);}
+                                      }} style={{background:"none",border:"1px solid #3a1e1e",color:"#8a4040",padding:"2px 7px",fontSize:"11px",cursor:"pointer",borderRadius:"3px"}}>✕</button>
+                                    )}
+                                  </div>
+                                </td>
                               </tr>
                             );
                           })}
@@ -999,7 +1059,7 @@ export default function PhyllisOps(){
                     </div>
                   )}
                   {editRec===(rec.ID||rec.id)&&(
-                    <AddIngToRecipe recipe={rec} costs={costs} ingredients={INGREDIENTS} onAdd={async(ingId,qty)=>{
+                    <AddIngToRecipe recipe={rec} costs={costs} ingredients={INGREDIENTS} onAdd={async(ingId,qty,portionCost)=>{
                       const ing=ingredients.find(i=>i.id===ingId);
                       const d={
                         recipe_id:rec.ID||rec.id,
@@ -1007,6 +1067,7 @@ export default function PhyllisOps(){
                         ingredient_id:ingId,
                         ingredient_name:ing?.name||ingId,
                         quantity_per_plate:qty,
+                        portion_cost:portionCost||0,
                       };
                       const r=await zoho("create","Recipe_Ingredients",{data:d});
                       if(r.data) setRecipeIngs(prev=>[...prev,{...d,ID:r.data.ID}]);
@@ -1429,19 +1490,80 @@ export default function PhyllisOps(){
 function AddIngToRecipe({recipe,costs,onAdd,ingredients}){
   const [selId,setSel]=useState(ingredients[0]?.id||"");
   const [qty,setQty]=useState("");
+  const [showHelper,setShowHelper]=useState(false);
+  // Portion cost helper
+  const [pkgSize,setPkgSize]=useState("");
+  const [pkgUnit,setPkgUnit]=useState("oz");
+  const [pkgCost,setPkgCost]=useState("");
+  const [plates,setPlates]=useState("");
+  const calcPortionCost=()=>{
+    const cost=parseFloat(pkgCost)||0;
+    const pl=parseFloat(plates)||1;
+    return pl>0?(cost/pl).toFixed(3):"—";
+  };
+  const ing=ingredients.find(i=>i.id===selId);
   return(
-    <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap",padding:"10px 16px",background:"#0e100e",borderTop:"1px solid #1e2a1e"}}>
-      <span style={{fontSize:"11px",color:"#5a8a5a"}}>+ Add ingredient:</span>
-      <select value={selId} onChange={e=>setSel(e.target.value)} style={{flex:1,minWidth:"160px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"5px 8px",fontSize:"12px",borderRadius:"2px",outline:"none"}}>
-        {ingredients.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-      </select>
-      <input type="number" min="0" step="0.001" value={qty} onChange={e=>setQty(e.target.value)} placeholder="qty"
-        style={{width:"64px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#c8a96e",padding:"5px 8px",fontSize:"12px",borderRadius:"2px",outline:"none"}}/>
-      <button onClick={()=>{
-        if(!qty||isNaN(parseFloat(qty))) return;
-        onAdd(selId,parseFloat(qty));
-        setQty("");
-      }} style={{background:"#1e2a1e",color:"#7eb87e",border:"1px solid #3a5a3a",padding:"5px 12px",fontSize:"12px",cursor:"pointer",borderRadius:"2px"}}>Add to Zoho</button>
+    <div style={{background:"#0a0e0a",borderTop:"1px solid #1e2a1e",padding:"12px 16px"}}>
+      <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap",marginBottom:showHelper?"10px":"0"}}>
+        <span style={{fontSize:"11px",color:"#5a8a5a",whiteSpace:"nowrap"}}>+ Add ingredient:</span>
+        <select value={selId} onChange={e=>setSel(e.target.value)} style={{flex:2,minWidth:"160px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"7px 8px",fontSize:"13px",borderRadius:"3px",outline:"none"}}>
+          {ingredients.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+        </select>
+        <input value={qty} onChange={e=>setQty(e.target.value)}
+          placeholder="e.g. 2 tbsp, 4 oz, 100g"
+          style={{flex:1,minWidth:"120px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#c8a96e",padding:"7px 8px",fontSize:"13px",borderRadius:"3px",outline:"none"}}/>
+        <button onClick={()=>setShowHelper(!showHelper)}
+          title="Calculate portion cost from package price"
+          style={{background:showHelper?"#1a2a1a":"none",border:"1px solid #2a3a2a",color:"#5a8a5a",padding:"7px 10px",fontSize:"12px",cursor:"pointer",borderRadius:"3px"}}>
+          💰 Calc
+        </button>
+        <button onClick={()=>{
+          if(!qty.trim()) return;
+          onAdd(selId, qty.trim(), showHelper&&parseFloat(calcPortionCost())>0?parseFloat(calcPortionCost()):0);
+          setQty(""); setPkgCost(""); setPlates(""); setShowHelper(false);
+        }} style={{background:"#1e2a1e",color:"#7eb87e",border:"1px solid #3a5a3a",padding:"7px 14px",fontSize:"13px",cursor:"pointer",borderRadius:"3px",fontWeight:"600"}}>Add to Zoho</button>
+      </div>
+      {showHelper&&(
+        <div style={{background:"#0c100c",border:"1px solid #1e3a1e",borderRadius:"4px",padding:"12px 14px",marginTop:"6px"}}>
+          <div style={{fontSize:"11px",color:"#5a8a5a",marginBottom:"8px",letterSpacing:"1px"}}>PORTION COST CALCULATOR</div>
+          <div style={{fontSize:"12px",color:"#888",marginBottom:"10px",lineHeight:"1.6"}}>
+            Example: Stone-Ground Grits — 24 oz bag costs $10, serves 10 plates → <strong style={{color:"#c8a96e"}}>$1.00 per plate</strong>
+          </div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"flex-end"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+              <span style={{fontSize:"10px",color:"#555"}}>Pkg size</span>
+              <input value={pkgSize} onChange={e=>setPkgSize(e.target.value)} placeholder="e.g. 24"
+                style={{width:"70px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"5px 7px",fontSize:"13px",borderRadius:"3px",outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+              <span style={{fontSize:"10px",color:"#555"}}>Unit</span>
+              <select value={pkgUnit} onChange={e=>setPkgUnit(e.target.value)}
+                style={{background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"5px 7px",fontSize:"13px",borderRadius:"3px",outline:"none"}}>
+                {["oz","lb","g","kg","gal","qt","cup","tbsp","tsp","each","case","bag"].map(u=><option key={u}>{u}</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+              <span style={{fontSize:"10px",color:"#555"}}>Package cost $</span>
+              <input value={pkgCost} onChange={e=>setPkgCost(e.target.value)} placeholder="10.00"
+                style={{width:"80px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#c8a96e",padding:"5px 7px",fontSize:"13px",borderRadius:"3px",outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+              <span style={{fontSize:"10px",color:"#555"}}>Plates served</span>
+              <input value={plates} onChange={e=>setPlates(e.target.value)} placeholder="10"
+                style={{width:"70px",background:"#0c0b09",border:"1px solid #2a3a2a",color:"#d4c9b8",padding:"5px 7px",fontSize:"13px",borderRadius:"3px",outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"3px",alignItems:"center"}}>
+              <span style={{fontSize:"10px",color:"#555"}}>Cost/plate</span>
+              <div style={{fontSize:"18px",fontWeight:"700",color:"#c8a96e",padding:"3px 0"}}>${calcPortionCost()}</div>
+            </div>
+          </div>
+          {pkgSize&&pkgCost&&plates&&(
+            <div style={{marginTop:"8px",fontSize:"12px",color:"#5a8a5a"}}>
+              ✓ Using <strong style={{color:"#c8a96e"}}>${calcPortionCost()}</strong> as the per-plate cost for this ingredient. Click "Add to Zoho" to save.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
